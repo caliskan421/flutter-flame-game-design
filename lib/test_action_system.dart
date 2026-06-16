@@ -78,4 +78,8 @@ class TestActionSystem extends ArenaActionSystem {
   // Serbest test (sandbox) → sınırsız stamina; senaryo gerçek maçı → sınırlı.
   @override
   bool get unlimitedStamina => !realMatch;
+
+  // Faz geçişi sahnesi yalnız gerçek maçta; serbest sandbox pratiği bölünmesin (08).
+  @override
+  bool get bossPhaseStaging => realMatch;
 }

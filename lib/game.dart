@@ -71,6 +71,14 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
   // Hitstop: temas anında oyunu kısa süre "donuk" hissettiren zaman ölçeği.
   double _hitstop = 0;
+  // Slow-mo: hitstop'tan AYRI, daha uzun ve daha hafif zaman ölçeği yolu
+  // (deathblow / faz geçişi sineması). Hitstop varken o önceliklidir (11).
+  double _slowmo = 0;
+  double _slowmoScale = 0.3;
+  // Screen-shake: sönümlenen küçük kamera sarsıntısı (heavy/posture/deathblow).
+  double _shakeT = 0;
+  double _shakeDur = 0;
+  double _shakeAmp = 0;
 
   // Geliştirici combat overlay'i (` / 0 tuşu ile aç-kapa).
   bool debug = false;
@@ -305,6 +313,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       feetV: base.feetV,
       ranged: base.ranged,
       maxPosture: base.maxPosture,
+      deathblowsRequired: base.deathblowsRequired,
     );
   }
 
@@ -354,6 +363,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     b.reset();
     metrics.reset();
     _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
     overlays.remove('testSelect');
     overlays.remove('testPanel');
     overlays.remove('won');
@@ -373,6 +384,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     boss?.reset();
     metrics.reset();
     _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
   }
 
   void completeCombatIntro() {
@@ -395,6 +408,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     }
     metrics.reset();
     _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
   }
 
   void changeTestAttack(TestAttackMode attackMode) {
@@ -415,6 +430,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.reset();
     metrics.reset();
     _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
     overlays.remove('won');
     overlays.remove('lost');
     overlays.remove('testPanel');
@@ -427,6 +444,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     boss?.reset();
     metrics.reset();
     _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
     phase = GamePhase.playing;
     overlays.remove('won');
     overlays.remove('lost');
@@ -643,9 +662,45 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     if (d > _hitstop) _hitstop = d;
   }
 
+  // Deathblow/faz sineması: hitstop'u bozmadan daha uzun, daha hafif yavaşlatma.
+  void requestSlowmo(double duration, double scale) {
+    if (duration > _slowmo) {
+      _slowmo = duration;
+      _slowmoScale = scale;
+    }
+  }
+
+  // Hafif kamera sarsıntısı (genlik px, süre s). Daha güçlü istek öncekini ezer.
+  void requestShake(double amplitude, double duration) {
+    final amp = amplitude * actionSystem.screenShakeScale;
+    if (amp <= 0 || duration <= 0) return;
+    if (amp >= _shakeAmp || _shakeT <= 0) {
+      _shakeAmp = amp;
+      _shakeDur = duration;
+      _shakeT = duration;
+    }
+  }
+
+  Offset _shakeOffset() {
+    if (_shakeT <= 0 || _shakeDur <= 0) return Offset.zero;
+    final t = (_shakeT / _shakeDur).clamp(0.0, 1.0);
+    final mag = _shakeAmp * t; // doğrusal sönüm
+    return Offset(sin(_shakeT * 92) * mag, cos(_shakeT * 67) * mag * 0.6);
+  }
+
   void spawnSpark(Vector2 pos, Color color) => add(Spark(pos, color));
 
-  void spawnPostureBreak(Vector2 pos) => add(PostureBreakFx(pos));
+  void spawnPostureBreak(
+    Vector2 pos, {
+    Color color = kBarBlue,
+    double scale = 1,
+  }) => add(PostureBreakFx(pos, color: color, ringScale: scale));
+
+  void spawnVignette({
+    Color color = const Color(0xFFC0271E),
+    double maxLife = 0.6,
+    int peakAlpha = 92,
+  }) => add(RedVignetteFx(color: color, maxLife: maxLife, peakAlpha: peakAlpha));
 
   void spawnPopup(
     Vector2 pos,
@@ -659,14 +714,19 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
   @override
   void update(double dt) {
-    // Hitstop: temas anında kısa "donma". Zamanlayıcı GERÇEK dt ile azalır,
-    // sahne ise ölçeklenmiş dt ile güncellenir (her şey yavaşlar).
-    double sdt = dt;
+    // Zaman ölçeği: hitstop (kısa sert donma) önceliklidir; yoksa slow-mo
+    // (deathblow/faz, daha uzun/hafif). İkisi de gerçek dt ile azalır, sahne
+    // ölçeklenmiş dt ile güncellenir. Shake zamanlayıcısı da gerçek dt ile akar.
+    double scale = 1.0;
     if (_hitstop > 0) {
       _hitstop = (_hitstop - dt).clamp(0, 999).toDouble();
-      sdt = dt * 0.06;
+      scale = 0.06;
+    } else if (_slowmo > 0) {
+      _slowmo = (_slowmo - dt).clamp(0, 999).toDouble();
+      scale = _slowmoScale;
     }
-    super.update(sdt);
+    if (_shakeT > 0) _shakeT = (_shakeT - dt).clamp(0, 999).toDouble();
+    super.update(dt * scale);
 
     if (phase == GamePhase.playing) metrics.fightDuration += dt;
 
@@ -691,6 +751,21 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
         }
       }
     }
+  }
+
+  // Tüm sahneyi (arena + HUD) screen-shake offset'i kadar kaydır. Sıfır
+  // sarsıntıda ekstra save/restore maliyeti yoktur (11).
+  @override
+  void render(Canvas canvas) {
+    final off = _shakeOffset();
+    if (off == Offset.zero) {
+      super.render(canvas);
+      return;
+    }
+    canvas.save();
+    canvas.translate(off.dx, off.dy);
+    super.render(canvas);
+    canvas.restore();
   }
 
   @override

@@ -51,4 +51,22 @@ abstract class ArenaActionSystem {
   double get lightStaminaCost => 8;
   double get blockStaminaCost => 12;
   double get parryStaminaRefund => 6; // başarılı parry küçük iade
+
+  // --- DEATHBLOW / FAZ / GAME-FEEL (06 / 08 / 11) -----------------------------
+  // Bu HP eşiğinin altında denge kırılırsa infaz ANINDA öldürür (riskli ama
+  // yetenekli oyuncuyu ödüllendirir). Üstündeyse segment siler + faz geçişi.
+  int get bossExecuteThresholdHp => 30;
+
+  // Faz eşiği aşılınca kısa, dokunulmaz "faz geçişi" sahnesi oynatılsın mı?
+  // Serbest sandbox'ta kapalı (pratik döngüsü bölünmesin); gerçek maçta açık.
+  bool get bossPhaseStaging => true;
+
+  // Ekran sarsıntısı genel çarpanı (erişilebilirlik için kısılabilir/kapatılabilir).
+  double get screenShakeScale => 1.0;
+
+  // Deathblow sinematik yavaşlatması (hitstop'tan AYRI, daha uzun ve daha hafif yol).
+  double get deathblowSlowmoScale => 0.28;
+  double get deathblowSlowmoDuration => 0.55;
+  // Faz geçişi sahnesinin süresi (dokunulmaz).
+  double get phaseTransitionDuration => 1.05;
 }

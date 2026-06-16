@@ -164,11 +164,31 @@ class Sfx {
   /// Boş saldırı (whiff): hafif hava kesme hissi.
   static void whiff() => _play(_dodge, volume: 0.4);
 
-  /// Denge kırılması: ağır saplanma vurgusu.
-  static void postureBreak() => _play(_hit, volume: 1.0);
+  /// Denge kırılması: metalik kırılma + ağır kütle (parry+mass katmanı). Düz
+  /// `hit`'ten ayrılır: özel deathblow/posture-break sesi (asset yoksa mevcut
+  /// havuzları katmanlayan güvenli fallback) (11).
+  static void postureBreak() {
+    _play(_mass, volume: 0.95);
+    _play(_parry, volume: 0.7);
+  }
 
-  /// Ağır saldırı isabeti: tam şiddetli saplanma.
-  static void heavyHit() => _play(_hit, volume: 1.0);
+  /// Ağır saldırı isabeti: saplanma + tok kütle katmanı (düz `hit`'ten kalın) (11).
+  static void heavyHit() {
+    _play(_hit, volume: 1.0);
+    _play(_mass, volume: 0.55);
+  }
+
+  /// İNFAZ (deathblow): tam şiddetli saplanma + ağır kütle — doruk darbesi (06/11).
+  static void deathblow() {
+    _play(_hit, volume: 1.0);
+    _play(_mass, volume: 1.0);
+  }
+
+  /// Faz geçişi kükremesi: ağır kütle + hafif metalik tını (08/11).
+  static void phaseShift() {
+    _play(_mass, volume: 0.85);
+    _play(_parry, volume: 0.4);
+  }
 
   /// Mükemmel (perfect) parry: parlak, tam şiddetli çarpışma "ŞING".
   static void parryPerfect() => _play(_parry, volume: 1.0);

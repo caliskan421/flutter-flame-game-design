@@ -129,6 +129,9 @@ class CharacterDef {
   final double feetV;
   final bool ranged;
   final int maxPosture;
+  // Boss'u devirmek için gereken DEATHBLOW (infaz) sayısı (06). Her infaz bir
+  // segment/faz siler; sonuncu öldürür. 1 = klasik tek infaz.
+  final int deathblowsRequired;
 
   const CharacterDef({
     required this.id,
@@ -142,6 +145,7 @@ class CharacterDef {
     this.feetV = 1.0,
     this.ranged = false,
     this.maxPosture = 100,
+    this.deathblowsRequired = 1,
   });
 
   /// Geriye dönük uyumluluk: tek desen isteyen kod (HUD önizleme, testler)
@@ -176,6 +180,7 @@ const List<CharacterDef> kCharacters = [
     name: 'ŞÖVALYE I',
     title: 'ÜÇLÜ SERİ',
     blurb: 'Ard arda üç vuruş; ortadaki KIRMIZI — onu kaç, gerisini savuştur.',
+    deathblowsRequired: 2,
     sheets: _knightSheets,
     combos: [
       ComboPattern([
@@ -229,6 +234,7 @@ const List<CharacterDef> kCharacters = [
     name: 'ŞÖVALYE II',
     title: 'AĞIR + İKİLİ HIZLI',
     blurb: 'KIRMIZI ağır açılışı kaç, sonra hızlı ikiliyi savuştur.',
+    deathblowsRequired: 2,
     sheets: _knightSheets,
     combos: [
       // Ana desen: KIRMIZI ağır (kaç → açılır) + iki parry.
@@ -353,6 +359,7 @@ const List<CharacterDef> kCharacters = [
     title: 'KALKAN KIRICI',
     blurb:
         'Savuştur, ortadaki KALKAN KIRICI KIRMIZI gelince kaç, sonra savuştur.',
+    deathblowsRequired: 2,
     sheets: _knightSheets,
     combos: [
       ComboPattern([

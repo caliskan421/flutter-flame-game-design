@@ -10,6 +10,7 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import 'game.dart';
 import 'theme.dart';
 
 // ============================================================================
@@ -158,10 +159,15 @@ class Spark extends PositionComponent {
 // ============================================================================
 class PostureBreakFx extends PositionComponent {
   static const double _maxLife = 0.5;
-  double _life = _maxLife;
+  double _life;
+  final Color color;
+  final double ringScale; // deathblow için daha büyük halka (1.0 = normal)
 
-  PostureBreakFx(Vector2 pos)
-    : super(position: pos.clone(), anchor: Anchor.center, priority: 98);
+  PostureBreakFx(Vector2 pos, {this.color = kBarBlue, this.ringScale = 1.0})
+    : _life = _maxLife * (ringScale > 1 ? 1.25 : 1.0),
+      super(position: pos.clone(), anchor: Anchor.center, priority: 98);
+
+  double get _life0 => _maxLife * (ringScale > 1 ? 1.25 : 1.0);
 
   @override
   void update(double dt) {
@@ -171,15 +177,15 @@ class PostureBreakFx extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final t = (_life / _maxLife).clamp(0.0, 1.0);
-    final r = 14 + (1 - t) * 64;
+    final t = (_life / _life0).clamp(0.0, 1.0);
+    final r = (14 + (1 - t) * 64) * ringScale;
     canvas.drawCircle(
       Offset.zero,
       r,
       Paint()
-        ..color = kBarBlue.withAlpha((t * 200).toInt())
+        ..color = color.withAlpha((t * 200).toInt())
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3 + t * 3,
+        ..strokeWidth = (3 + t * 3) * ringScale,
     );
     canvas.drawCircle(
       Offset.zero,
@@ -187,7 +193,55 @@ class PostureBreakFx extends PositionComponent {
       Paint()
         ..color = kWhite.withAlpha((t * 120).toInt())
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+        ..strokeWidth = 2 * ringScale,
     );
+  }
+}
+
+// ============================================================================
+//  RED VIGNETTE FX  —  arenanın kenarlarını kısaca kırmızıya boyayan sinematik
+//  vinyet (deathblow / faz geçişi doruk anı). Kısa ve muhafazakâr alfa →
+//  okunabilirliği bozmaz; arena dikdörtgenine kırpılır (HUD'a taşmaz) (06/11).
+// ============================================================================
+class RedVignetteFx extends PositionComponent
+    with HasGameReference<BossArenaGame> {
+  final Color color;
+  final double maxLife;
+  final int peakAlpha;
+  double _life;
+
+  RedVignetteFx({
+    this.color = const Color(0xFFC0271E),
+    this.maxLife = 0.6,
+    this.peakAlpha = 92,
+  }) : _life = maxLife,
+       super(priority: 50);
+
+  @override
+  void update(double dt) {
+    _life -= dt;
+    if (_life <= 0) removeFromParent();
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final r = game.arenaRect;
+    if (r.isEmpty) return;
+    final age = maxLife - _life;
+    // Zarf: hızlı giriş (ilk %20), sonra yumuşak sönüm.
+    final env = age < maxLife * 0.2
+        ? (age / (maxLife * 0.2)).clamp(0.0, 1.0)
+        : (_life / (maxLife * 0.8)).clamp(0.0, 1.0);
+    final a = (peakAlpha * env).clamp(0.0, 255.0).toInt();
+    if (a <= 0) return;
+    final shader = RadialGradient(
+      colors: [color.withAlpha(0), color.withAlpha(a)],
+      stops: const [0.42, 1.0],
+      radius: 0.85,
+    ).createShader(r);
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(r, const Radius.circular(4)));
+    canvas.drawRect(r, Paint()..shader = shader);
+    canvas.restore();
   }
 }
