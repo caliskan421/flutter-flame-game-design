@@ -467,9 +467,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.tryAttack(PlayerAttackType.light);
   }
 
+  // Ağır saldırı artık HER modda kullanılabilir; test kısıtı yerine stamina
+  // sınırlar (player.tryAttack maliyeti kontrol eder). (05)
   void tryPlayerHeavyAttack() {
     if (phase != GamePhase.playing) return;
-    if (!testMode) return;
     if (!player.attackReady) return;
     player.tryAttack(PlayerAttackType.heavy);
   }
@@ -482,8 +483,16 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     if (b == null || b.dying) return;
     final dist = (b.position.x - player.position.x).abs();
     if (dist <= attackRange) {
-      metrics.lightHits++;
-      b.receivePlayerAttack(type);
+      if (type == PlayerAttackType.heavy) {
+        metrics.heavyHits++;
+      } else {
+        metrics.lightHits++;
+      }
+      b.receivePlayerAttack(
+        type,
+        comboStep: player.comboStep,
+        finisher: player.isFinisher,
+      );
     } else {
       metrics.attackWhiffs++;
       Sfx.whiff();
@@ -503,7 +512,13 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     }
 
     for (final id in GamepadInputBinding.releasedIds(event)) {
-      _activeGamepadInputs.remove(id);
+      if (_activeGamepadInputs.remove(id)) {
+        final released = GamepadInputBinding.fromId(id);
+        if (released != null) {
+          final action = controls.actionForGamepad(released);
+          if (action != null) _handleInputActionReleased(action);
+        }
+      }
     }
 
     final binding = GamepadInputBinding.fromEvent(event);
@@ -607,6 +622,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       case ArenaInputAction.dodge:
         metrics.dodgeAttempts++;
         player.tryDodge();
+      case ArenaInputAction.block:
+        player.tryBlockStart();
       case ArenaInputAction.attack:
         tryPlayerAttack();
       case ArenaInputAction.heavyAttack:
@@ -614,6 +631,11 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       case ArenaInputAction.controls:
         break;
     }
+  }
+
+  // Tutulan aksiyonların (blok) bırakılması: keyup / gamepad release.
+  void _handleInputActionReleased(ArenaInputAction action) {
+    if (action == ArenaInputAction.block) player.tryBlockEnd();
   }
 
   // --- HITSTOP & FX YARDIMCILARI ---
@@ -692,6 +714,12 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
         return KeyEventResult.handled;
       }
       // Diğer fazlarda enter/space yok sayılır — seçim butonlarla yapılır.
+    } else if (event is KeyUpEvent) {
+      final action = controls.actionForKeyboard(event.logicalKey);
+      if (action != null) {
+        _handleInputActionReleased(action);
+        return KeyEventResult.handled;
+      }
     }
     return KeyEventResult.handled;
   }
@@ -715,6 +743,7 @@ class CombatMetrics {
   int attackWhiffs = 0;
   int lightHits = 0;
   int heavyHits = 0;
+  int staminaEmptyDenials = 0;
 
   void reset() {
     fightDuration = 0;
@@ -728,6 +757,7 @@ class CombatMetrics {
     attackWhiffs = 0;
     lightHits = 0;
     heavyHits = 0;
+    staminaEmptyDenials = 0;
   }
 }
 

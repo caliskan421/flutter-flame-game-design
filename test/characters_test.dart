@@ -91,10 +91,11 @@ void main() {
           expect(beat.punishOnDodge, isFalse);
         }
       }
-      // punishOnDodge yalnız committed (heavy/guardBreak/delayed) profillerde.
+      // punishOnDodge yalnız committed (heavy/guardBreak/thrust/delayed) profillerde.
       const committed = {
         DefenseProfile.heavy,
         DefenseProfile.guardBreak,
+        DefenseProfile.thrust,
         DefenseProfile.delayed,
       };
       for (final beat in allBeats()) {
@@ -137,9 +138,11 @@ void main() {
     });
 
     test('non-feint beats carry positive posture damage', () {
+      // guardBreak (kaç) ve thrust (mikiri) parry'le çözülmez → posture'a gerek yok.
       for (final beat in allBeats()) {
         if (beat.kind != BeatKind.feint &&
-            beat.defense != DefenseProfile.guardBreak) {
+            beat.defense != DefenseProfile.guardBreak &&
+            beat.defense != DefenseProfile.thrust) {
           expect(beat.postureDamage, greaterThan(0));
         }
       }

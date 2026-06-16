@@ -46,6 +46,28 @@ void main() {
       expect(real.bossHealthRegenPerSecond, 0);
     });
 
+    test('stamina is unlimited only in the sandbox test arena', () {
+      const sandbox = TestActionSystem();
+      const real = TestActionSystem(realMatch: true);
+      const normal = NormalActionSystem();
+
+      // Serbest test (sandbox) → sınırsız; gerçek maç ve normal mod → sınırlı.
+      expect(sandbox.unlimitedStamina, isTrue);
+      expect(real.unlimitedStamina, isFalse);
+      expect(normal.unlimitedStamina, isFalse);
+    });
+
+    test('stamina costs are positive and tuned by weight', () {
+      const s = NormalActionSystem();
+      expect(s.maxStamina, greaterThan(0));
+      expect(s.dodgeStaminaCost, greaterThan(0));
+      expect(s.heavyStaminaCost, greaterThan(s.lightStaminaCost));
+      expect(s.heavyStaminaCost, greaterThan(s.dodgeStaminaCost));
+      expect(s.blockStaminaCost, greaterThan(0));
+      expect(s.parryStaminaRefund, greaterThan(0));
+      expect(s.staminaRegenPerSecond, greaterThan(0));
+    });
+
     test('boss base position is mode-specific', () {
       const normal = NormalActionSystem();
       const test = TestActionSystem();

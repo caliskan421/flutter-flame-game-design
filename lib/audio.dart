@@ -167,6 +167,15 @@ class Sfx {
   /// Denge kırılması: ağır saplanma vurgusu.
   static void postureBreak() => _play(_hit, volume: 1.0);
 
-  /// Ağır saldırı isabeti.
+  /// Ağır saldırı isabeti: tam şiddetli saplanma.
   static void heavyHit() => _play(_hit, volume: 1.0);
+
+  /// Mükemmel (perfect) parry: parlak, tam şiddetli çarpışma "ŞING".
+  static void parryPerfect() => _play(_parry, volume: 1.0);
+
+  /// Geç (late) parry: daha tok, kısık çarpışma.
+  static void parryLate() => _play(_parry, volume: 0.65);
+
+  /// Yorgun: stamina yetmeyince aksiyonun reddi (boş hava sesi).
+  static void tired() => _play(_dodge, volume: 0.3);
 }

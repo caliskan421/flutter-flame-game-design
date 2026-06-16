@@ -24,6 +24,7 @@ import 'theme.dart';
 enum PlayerState {
   idle,
   parry,
+  block,
   counter,
   riposte,
   dodge,
@@ -33,12 +34,28 @@ enum PlayerState {
   dead,
 }
 
+/// Başarılı parry'nin zamanlama kalitesi (03_parry_pencere_dinamigi).
+///   perfect → pencerenin ilk diliminde; ekstra posture + tam hitstop + parlak.
+///   late    → pencerenin geç dilimi; daha tok, az posture, hitstop yok.
+enum ParryQuality { perfect, late }
+
 class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   PlayerState state = PlayerState.idle;
   int health = 100;
   double displayHealth = 100;
   int posture = 100;
   double displayPosture = 100;
+
+  // --- STAMINA / KAYNAK (01) ---
+  double stamina = 100;
+  double maxStamina = 100;
+  double displayStamina = 100;
+  double _staminaIdle = 0; // son aksiyondan bu yana (regen gecikmesi)
+  bool get unlimitedStamina => game.actionSystem.unlimitedStamina;
+  // "Yorgun": düşük staminada HUD barı kırmızı yanıp söner, aksiyonlar reddedilir.
+  bool get isExhausted =>
+      !unlimitedStamina &&
+      stamina < maxStamina * game.actionSystem.lowStaminaFraction;
 
   // --- PARRY (hassas) ---
   static const double parryWindowDuration = 0.13;
@@ -50,6 +67,14 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   GuardDirection _parryGuard = GuardDirection.any;
   GuardDirection _counterGuard = GuardDirection.any;
 
+  // --- PARRY DECAY & KALİTE (03) ---
+  // Ardışık (kısa aralıklı) basışlar penceresi daraltır: parry spam'i cezalanır.
+  static const double _parrySpamGap = 0.5; // bu süreden uzaksa sayaç sıfırlanır
+  static const double _parryWindowFloor = 0.05;
+  int _parrySpam = 0;
+  // Son başarılı parry'nin kalitesi (boss juice/feedback için okur).
+  ParryQuality lastParryQuality = ParryQuality.perfect;
+
   // --- DODGE (geniş pencere; yalnız kırmızı saldırılarda anlamlı) ---
   static const double dodgeWindowDuration = 0.20;
   static const double dodgeCooldownDuration = 0.42;
@@ -57,6 +82,34 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   double _dodgeCooldown = 0;
   double _dodgeT = 999;
   double _dodgeDur = dodgeWindowDuration;
+  // --- DODGE i-FRAME (04) ---
+  // Dodge animasyonunun ortasında gerçek dokunulmazlık aralığı; bu pencerede
+  // HER hasar kaynağı (melee/mermi) geçersiz. İlk dilim "perfect" (slow-mo ödülü).
+  static const double dodgeInvulnFrom = 0.02;
+  static const double dodgeInvulnTo = 0.20;
+  static const double perfectDodgeUntil = 0.11;
+  bool get isInvulnerable =>
+      state == PlayerState.dodge && dodgeInvulnerableAt(_dodgeT);
+  // i-frame'in erken (perfect) diliminde miyiz? Boss daha uzun punish + slow-mo verir.
+  bool get isPerfectDodge =>
+      state == PlayerState.dodge && _dodgeT <= perfectDodgeUntil;
+
+  // --- SAF KURAL FONKSİYONLARI (boss çözümü + birim testler aynısını kullanır) ---
+  // Dodge başından bu yana geçen süre dokunulmazlık (i-frame) aralığında mı?
+  // ARALIK DIŞINDA dodge başlamış olsa bile saldırı isabet eder (greed cezası, 04).
+  static bool dodgeInvulnerableAt(double dodgeT) =>
+      dodgeT >= dodgeInvulnFrom && dodgeT <= dodgeInvulnTo;
+
+  // Ardışık spam sayacına göre daralan parry penceresi (03). Sayaç arttıkça daralır,
+  // bir tabanın altına inmez.
+  static double decayParryWindow(double base, int spam) =>
+      max(_parryWindowFloor, base * pow(0.7, spam).toDouble());
+
+  // Parry başarısı: basıştan bu yana geçen süre, EFEKTİF pencereden küçük/eşitse.
+  // Efektif pencere = beat penceresi ile oyuncunun (daralmış olabilen) penceresinin
+  // küçüğü → spam sonrası eski beat penceresi başarıyı kurtaramaz.
+  static bool parrySucceeds(double sinceParry, double effectiveWindow) =>
+      sinceParry <= effectiveWindow;
 
   // --- TEMPO (comboWindow): başarılı parry sonrası kısa saldırı avantajı ---
   static const double tempoDuration = 0.6;
@@ -75,6 +128,18 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   double _atkT = 0;
   bool _atkContacted = false;
   PlayerAttackType _attackType = PlayerAttackType.light;
+
+  // --- KOMBO ZİNCİRİ (05) ---
+  // Ardışık light'lar comboStep arttırır; heavy = finisher. Zincir penceresi
+  // kaçırılırsa idle'a düşer ve sayaç sıfırlanır.
+  static const double comboWindowDuration = 0.55;
+  int comboStep = 0;
+  double _comboWindow = 0;
+  bool _lastAttackWasFinisher = false;
+  bool get isFinisher => _lastAttackWasFinisher;
+
+  // --- BLOK / GUARD (02) ---
+  bool _blockHeld = false;
   static const double riposteDuration = 0.22;
   double _riposteT = 0;
   String _riposteKey = 'attack1';
@@ -115,13 +180,24 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
 
   bool get isParrying => _parryWindow > 0;
   GuardDirection get parryGuard => _parryGuard;
+  // Oyuncunun şu anki (spam ile daralmış olabilen) parry penceresi. Boss temas
+  // çözümünde beat penceresiyle birlikte bunun küçüğünü kullanır (03).
+  double get effectiveParryWindow => _parryWindowMax;
   bool get isDodging => _dodgeWindow > 0;
   bool get isAttacking => state == PlayerState.attack;
+  bool get isBlocking => state == PlayerState.block;
   bool get isBusy =>
       isAttacking ||
       state == PlayerState.riposte ||
       state == PlayerState.stunned ||
       state == PlayerState.hurt;
+
+  // Light saldırının recovery'sinin geç kısmı dodge/parry ile iptal edilebilir
+  // (defansa pürüzsüz geçiş). Heavy taahhüttür: iptal edilemez (05).
+  bool get _canCancelAttack =>
+      isAttacking &&
+      _attackType == PlayerAttackType.light &&
+      _atkT >= _atkWindup + _atkActive;
 
   double get _atkWindup =>
       _attackType == PlayerAttackType.heavy ? heavyAtkWindup : atkWindup;
@@ -146,12 +222,18 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     displayHealth = 100;
     posture = 100;
     displayPosture = 100;
+    maxStamina = game.actionSystem.maxStamina;
+    stamina = maxStamina;
+    displayStamina = maxStamina;
+    _staminaIdle = 0;
     _tempo = 0;
     state = PlayerState.idle;
     _fill = kWhite;
     _parryWindow = 0;
     _parryWindowMax = parryWindowDuration;
     _parryCooldown = 0;
+    _parrySpam = 0;
+    lastParryQuality = ParryQuality.perfect;
     _parryGuard = GuardDirection.any;
     _counterGuard = GuardDirection.any;
     _dodgeWindow = 0;
@@ -162,6 +244,10 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _atkT = 0;
     _atkContacted = false;
     _attackType = PlayerAttackType.light;
+    comboStep = 0;
+    _comboWindow = 0;
+    _lastAttackWasFinisher = false;
+    _blockHeld = false;
     _riposteT = 0;
     _riposteKey = 'attack1';
     _stateTimer = 0;
@@ -177,29 +263,78 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   }
 
   // -------------------------------------------------------------- GİRDİLER
+  // Stamina harcama denemesi. Sınırsızsa hep başarılı. Yetmezse reddedilir,
+  // "yorgun" feedback'i verilir ve denial metriği artar (01).
+  bool _spendStamina(double cost) {
+    if (unlimitedStamina || cost <= 0) {
+      _staminaIdle = 0;
+      return true;
+    }
+    if (stamina < cost) {
+      game.metrics.staminaEmptyDenials++;
+      Sfx.tired();
+      spawnExhaustedFeedback();
+      return false;
+    }
+    stamina -= cost;
+    _staminaIdle = 0;
+    return true;
+  }
+
+  void spawnExhaustedFeedback() {
+    game.spawnPopup(
+      Vector2(position.x, position.y - size.y * 0.7),
+      'YORGUN',
+      fontSize: 13,
+      color: kBarRed,
+      rise: 20,
+    );
+  }
+
   void tryParry([GuardDirection guard = GuardDirection.any]) {
     if (game.phase != GamePhase.playing || dying) return;
+    if (_canCancelAttack) _cancelAttackToDefense();
     if (isBusy || state == PlayerState.dodge) return;
     if (_parryCooldown > 0) return;
-    _parryWindowMax = guard == GuardDirection.low
+    // Window decay: kısa aralıkla ardışık basışta sayaç artar, pencere daralır.
+    if (sinceParry < _parrySpamGap) {
+      _parrySpam++;
+    } else {
+      _parrySpam = 0;
+    }
+    final base = guard == GuardDirection.low
         ? lowParryWindowDuration
         : parryWindowDuration;
+    _parryWindowMax = decayParryWindow(base, _parrySpam);
     _parryWindow = _parryWindowMax;
     _parryCooldown = parryCooldownDuration;
     _parryGuard = guard;
     sinceParry = 0;
+    if (state == PlayerState.block) _blockHeld = false;
     state = PlayerState.parry;
+  }
+
+  // Bir parry başarısının perfect mi late mi olduğunu, basışın pencerenin neresine
+  // denk geldiğine göre belirler (boss temas anında çağırır). Küçük sinceParry =
+  // temasa yakın basış = mükemmel zamanlama.
+  ParryQuality classifyParry() {
+    final perfect = sinceParry <= _parryWindowMax * 0.45;
+    lastParryQuality = perfect ? ParryQuality.perfect : ParryQuality.late;
+    return lastParryQuality;
   }
 
   void tryDodge() {
     if (game.phase != GamePhase.playing || dying) return;
+    if (_canCancelAttack) _cancelAttackToDefense();
     if (isBusy) return;
     if (_dodgeCooldown > 0) return;
+    if (!_spendStamina(game.actionSystem.dodgeStaminaCost)) return;
     _dodgeWindow = dodgeWindowDuration;
     _dodgeCooldown = dodgeCooldownDuration;
     _dodgeT = 0;
     _dodgeDur = dodgeWindowDuration + 0.04;
     sinceDodge = 0;
+    if (state == PlayerState.block) _blockHeld = false;
     state = PlayerState.dodge;
     _stateTimer = _dodgeDur;
     _kbV += game.actionSystem.playerDodgeKnockbackImpulse;
@@ -208,11 +343,80 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _tiltV -= 5;
   }
 
-  // F: tek saldırı. Animasyon her zaman oynar; temas active karesinde çözülür.
+  // -------------------------------------------------------------- BLOK / GUARD
+  // Tutulan savunma: HP yemez ama posture+stamina maliyeti, knockback ve donuk
+  // metal sesi. Posture dolarsa guard break → sersem (02).
+  void tryBlockStart() {
+    if (game.phase != GamePhase.playing || dying) return;
+    _blockHeld = true;
+    if (isBusy || state == PlayerState.dodge || isParrying) return;
+    state = PlayerState.block;
+  }
+
+  void tryBlockEnd() {
+    _blockHeld = false;
+    if (state == PlayerState.block) {
+      state = PlayerState.idle;
+      _fill = kWhite;
+    }
+  }
+
+  // Boss saldırısı blok sırasında geldi. guardBreak (kırmızı) blokta delip geçer:
+  // chip HP + büyük posture; diğerleri hasarsız ama posture+stamina yer.
+  void takeBlockedHit(Beat beat) {
+    if (dying) return;
+    final bool perilous = beat.defense == DefenseProfile.guardBreak;
+    int posMul = beat.kind == BeatKind.meleeHeavy ? 34 : 18;
+    if (perilous) posMul = 46;
+    // Stamina yetmezse blok zayıflar: daha çok posture + bir miktar chip sızar.
+    final paid = _spendStamina(game.actionSystem.blockStaminaCost);
+    if (!paid) posMul = (posMul * 1.5).round();
+    _kbV += game.actionSystem.playerHitKnockbackImpulse(-1, beat.damage) * 0.5;
+    _sq = -0.16;
+    _sqV = 0;
+    _tiltV += 5;
+    Sfx.block();
+    if (perilous || !paid) {
+      final chip = perilous
+          ? (beat.damage * 0.5).round()
+          : (beat.damage * 0.25).round();
+      if (chip > 0) {
+        health = (health - chip).clamp(game.actionSystem.minPlayerHealth, 100);
+        game.metrics.playerDamageTaken += chip;
+        game.spawnPopup(
+          Vector2(position.x, position.y - size.y * 0.8),
+          '-$chip',
+          fontSize: 15,
+          color: kBarRed,
+        );
+      }
+    }
+    takePostureDamage(posMul);
+    if (health <= 0) _startDeath();
+  }
+
+  // F/G: saldırı. Light'lar zincirlenir (comboStep), heavy finisher'dır. Animasyon
+  // her zaman oynar; temas active karesinde çözülür. Stamina'ya bağlıdır (05).
   void tryAttack([PlayerAttackType type = PlayerAttackType.light]) {
     if (game.phase != GamePhase.playing || dying) return;
     if (isBusy || _attackCooldown > 0) return;
     if (state == PlayerState.dodge && _dodgeWindow > 0) return;
+    final cost = type == PlayerAttackType.heavy
+        ? game.actionSystem.heavyStaminaCost
+        : game.actionSystem.lightStaminaCost;
+    if (!_spendStamina(cost)) return;
+
+    // Kombo adımı: zincir penceresi açıksa ilerle, değilse baştan başla.
+    if (type == PlayerAttackType.heavy) {
+      // Heavy: zincir varsa finisher, yoksa tek ağır vuruş.
+      _lastAttackWasFinisher = _comboWindow > 0 && comboStep > 0;
+      comboStep = 0;
+    } else {
+      comboStep = _comboWindow > 0 ? (comboStep + 1).clamp(0, 2) : 0;
+      _lastAttackWasFinisher = false;
+    }
+
+    if (state == PlayerState.block) _blockHeld = false;
     state = PlayerState.attack;
     _attackType = type;
     _atkT = 0;
@@ -223,6 +427,15 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _sqV = 0;
     _kbV += game.actionSystem.playerAttackKnockbackImpulse;
     _tiltV += type == PlayerAttackType.heavy ? -5 : -3;
+  }
+
+  // Light recovery'sinden defansa pürüzsüz geçiş: saldırıyı kes, zinciri koru.
+  void _cancelAttackToDefense() {
+    state = PlayerState.idle;
+    _fill = kWhite;
+    _atkContacted = true;
+    // Kombo penceresini açık tut: iptal sonrası saldırıya dönülürse zincir sürer.
+    _comboWindow = comboWindowDuration;
   }
 
   bool get attackReady => _attackCooldown <= 0 && !isBusy && !dying;
@@ -238,6 +451,13 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _kbV += 320;
     _tiltV += -3;
     _tempo = tempoDuration;
+    // Parry ödül aracı: ücretsiz, üstüne küçük stamina iadesi (agresif savunma).
+    if (!unlimitedStamina) {
+      stamina = (stamina + game.actionSystem.parryStaminaRefund).clamp(
+        0,
+        maxStamina,
+      );
+    }
   }
 
   void onDodgeSuccess() {
@@ -346,8 +566,27 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     sinceParry += dt;
     sinceDodge += dt;
     if (_tempo > 0) _tempo -= dt;
+    if (_comboWindow > 0) {
+      _comboWindow -= dt;
+      if (_comboWindow <= 0 && !isAttacking) comboStep = 0;
+    }
     displayHealth += (health - displayHealth) * (dt * 8).clamp(0, 1);
     displayPosture += (posture - displayPosture) * (dt * 8).clamp(0, 1);
+    displayStamina += (stamina - displayStamina) * (dt * 10).clamp(0, 1);
+
+    // Stamina regen: son aksiyondan sonra kısa gecikme, sonra /s dolum.
+    _staminaIdle += dt;
+    if (!unlimitedStamina &&
+        stamina < maxStamina &&
+        _staminaIdle > game.actionSystem.staminaRegenDelay) {
+      stamina = (stamina + game.actionSystem.staminaRegenPerSecond * dt).clamp(
+        0,
+        maxStamina,
+      );
+    } else if (unlimitedStamina) {
+      stamina = maxStamina;
+      displayStamina = maxStamina;
+    }
 
     if (dying) {
       _deathT += dt;
@@ -390,6 +629,19 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
         game.onPlayerAttackContact(_attackType);
       }
       if (_atkT >= _atkTotal) {
+        // Light bitince zincir penceresi açılır; heavy finisher zinciri kapatır.
+        if (_attackType == PlayerAttackType.light && comboStep < 2) {
+          _comboWindow = comboWindowDuration;
+        } else {
+          _comboWindow = 0;
+          comboStep = 0;
+        }
+        state = PlayerState.idle;
+        _fill = kWhite;
+      }
+    } else if (state == PlayerState.block) {
+      // Blok tutuluyorsa süresiz aktif; bırakılınca idle'a düşer.
+      if (!_blockHeld) {
         state = PlayerState.idle;
         _fill = kWhite;
       }
@@ -401,7 +653,8 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
         _fill = kWhite;
       }
     } else if (_parryWindow <= 0 && state == PlayerState.parry) {
-      state = PlayerState.idle;
+      // Parry bitti: blok hâlâ basılıysa bloğa dön, değilse idle.
+      state = _blockHeld ? PlayerState.block : PlayerState.idle;
       _parryGuard = GuardDirection.any;
     }
 
@@ -444,6 +697,8 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
           return _sprites.once('attack2', _parryWindow, _parryWindowMax);
         }
         return _sprites.hold('defend', _parryWindow, _parryWindowMax);
+      case PlayerState.block:
+        return _sprites.frames('protect').last;
       case PlayerState.counter:
         if (game.actionSystem.isTest) {
           if (_counterGuard == GuardDirection.low) {
@@ -466,7 +721,11 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
       case PlayerState.attack:
         final key = _attackType == PlayerAttackType.heavy
             ? 'attack1'
-            : 'attack3';
+            : switch (comboStep) {
+                1 => 'attack1',
+                2 => 'attack2',
+                _ => 'attack3',
+              };
         return _sprites.once(key, _atkTotal - _atkT, _atkTotal);
       case PlayerState.hurt:
       case PlayerState.stunned:

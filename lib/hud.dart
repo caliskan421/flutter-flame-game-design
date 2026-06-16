@@ -21,6 +21,15 @@ import 'theme.dart';
 class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
   Hud() : super(priority: 100);
 
+  // Yorgun (düşük stamina) barının yanıp sönmesi için zaman akümülatörü.
+  double _flash = 0;
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _flash += dt;
+  }
+
   // --- METİN STİLLERİ (parşömen üstü koyu metin) ---
   final _kicker = TextPaint(
     style: const TextStyle(
@@ -215,8 +224,10 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
     );
     y += 28;
 
-    // --- BARLAR: panel tabanına sabit (BOSS HP, BOSS DENGE, SEN HP) ---
-    final double barsY = max(y + 16, bottomCoord - pad - 136);
+    // --- BARLAR: panel tabanına sabit (BOSS HP/DENGE, SEN HP/DENGE/GÜÇ) ---
+    final p = game.player;
+    const double barGap = 34;
+    final double barsY = max(y + 16, bottomCoord - pad - 184);
     _divider(canvas, x, barsY - 14, w);
     _hpBar(
       canvas,
@@ -231,9 +242,9 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
     _hpBar(
       canvas,
       x,
-      barsY + 40,
+      barsY + barGap,
       w,
-      'DENGE',
+      'B. DENGE',
       kBarBlue,
       boss?.posture.round() ?? 100,
       boss?.displayPosture ?? 100,
@@ -242,17 +253,44 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
     _hpBar(
       canvas,
       x,
-      barsY + 80,
+      barsY + barGap * 2,
       w,
       'SEN',
       kBarGreen,
-      game.player.health,
-      game.player.displayHealth,
+      p.health,
+      p.displayHealth,
+    );
+    _hpBar(
+      canvas,
+      x,
+      barsY + barGap * 3,
+      w,
+      'S. DENGE',
+      kBarBlue,
+      p.posture,
+      p.displayPosture,
+    );
+    // Stamina/GÜÇ: yorgunken kırmızı yanıp söner (01).
+    final bool tired = p.isExhausted;
+    final double pulse = 0.5 + 0.5 * sin(_flash * 9);
+    final Color staColor = tired
+        ? Color.lerp(kBarRed, kWhite, pulse * 0.5)!
+        : const Color(0xFFE0A82E);
+    _hpBar(
+      canvas,
+      x,
+      barsY + barGap * 4,
+      w,
+      'GÜÇ',
+      staColor,
+      p.stamina.round(),
+      p.displayStamina,
+      maxVal: p.maxStamina,
     );
 
     _foot.render(
       canvas,
-      'SPACE Parry · SHIFT Kaç (kırmızı) · F Vur',
+      'SPACE Parry · SHIFT Kaç · D Blok · F/G Vur',
       Vector2(x, bottomCoord - pad - 2),
     );
 
@@ -466,8 +504,11 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
 
   // Savunma profili → chip alt şeridi rengi. SADE MODEL: yalnız KIRMIZI
   // (guardBreak = kaç) işaretlenir; gerisi şeritsiz (parry varsayılan).
-  Color? _profileColor(DefenseProfile d) =>
-      d == DefenseProfile.guardBreak ? kBarRed : null;
+  Color? _profileColor(DefenseProfile d) => switch (d) {
+    DefenseProfile.guardBreak => kBarRed,
+    DefenseProfile.thrust => const Color(0xFF9B5DE5),
+    _ => null,
+  };
 
   // --------------------------------------------------------------------------
   //  DEBUG OVERLAY  —  canlı combat metrikleri + durum (` / 0 ile aç-kapa)
@@ -484,6 +525,7 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
       'süre: ${m.fightDuration.toStringAsFixed(1)}s  faz: ${boss?.phase ?? '-'}',
       'boss HP: ${boss?.health ?? '-'}  denge: ${boss?.posture.round() ?? '-'}/${boss?.maxPosture ?? '-'}',
       'oyuncu HP: ${p.health}  tempo: ${p.hasTempo ? 'AÇIK' : '-'}',
+      'stamina: ${p.stamina.round()}/${p.maxStamina.round()}${p.isExhausted ? ' YORGUN' : ''}  red: ${m.staminaEmptyDenials}',
       'parry: ${m.parrySuccesses}/${m.parryAttempts}  dodge: ${m.dodgeSuccesses}/${m.dodgeAttempts}',
       'vuruş L/H: ${m.lightHits}/${m.heavyHits}  ıska: ${m.attackWhiffs}',
       'denge kırma: ${m.bossPostureBreaks}  bossHasar: ${m.bossDamageTaken}  alınan: ${m.playerDamageTaken}',

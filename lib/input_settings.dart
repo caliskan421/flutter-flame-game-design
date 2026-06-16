@@ -10,6 +10,7 @@ enum ArenaInputAction {
   parryHigh,
   parryLow,
   dodge,
+  block,
   attack,
   heavyAttack,
   controls,
@@ -22,6 +23,7 @@ extension ArenaInputActionLabels on ArenaInputAction {
       ArenaInputAction.parryHigh => 'ÜST SAVUNMA',
       ArenaInputAction.parryLow => 'ALT SAVUNMA',
       ArenaInputAction.dodge => 'DODGE',
+      ArenaInputAction.block => 'BLOK',
       ArenaInputAction.attack => 'SALDIRI',
       ArenaInputAction.heavyAttack => 'AĞIR SALDIRI',
       ArenaInputAction.controls => 'AYARLAR',
@@ -305,6 +307,7 @@ class InputSettings extends ChangeNotifier {
         ArenaInputAction.parryHigh: LogicalKeyboardKey.arrowUp,
         ArenaInputAction.parryLow: LogicalKeyboardKey.arrowDown,
         ArenaInputAction.dodge: LogicalKeyboardKey.shiftLeft,
+        ArenaInputAction.block: LogicalKeyboardKey.keyD,
         ArenaInputAction.attack: LogicalKeyboardKey.keyF,
         ArenaInputAction.heavyAttack: LogicalKeyboardKey.keyG,
         ArenaInputAction.controls: LogicalKeyboardKey.escape,
@@ -325,6 +328,9 @@ class InputSettings extends ChangeNotifier {
         ArenaInputAction.dodge: const GamepadInputBinding.axis(
           GamepadAxis.leftTrigger,
           1,
+        ),
+        ArenaInputAction.block: const GamepadInputBinding.button(
+          GamepadButton.b,
         ),
         ArenaInputAction.attack: const GamepadInputBinding.button(
           GamepadButton.a,

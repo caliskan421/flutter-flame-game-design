@@ -74,4 +74,8 @@ class TestActionSystem extends ArenaActionSystem {
 
   @override
   bool get bossUsesIdleApproachSprite => true;
+
+  // Serbest test (sandbox) → sınırsız stamina; senaryo gerçek maçı → sınırlı.
+  @override
+  bool get unlimitedStamina => !realMatch;
 }

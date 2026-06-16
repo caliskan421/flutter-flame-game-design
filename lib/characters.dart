@@ -21,6 +21,8 @@ enum BeatKind { meleeLight, meleeHeavy, ranged, feint }
 ///   heavy       → dodge edilirse PUNISH açılır; parry posture'a çok yarar ama riskli.
 ///   guardBreak  → parry/blok CEZALANDIRIR; dodge etmelisin.
 ///   tracking    → dodge'u YAKALAR (ceza); parry etmelisin.
+///   thrust      → MİKİRİ: delici saldırı; dodge (ileri-bas) ile bastırılır,
+///                 parry cezalanır. Dodge edilince boss büyük açık verir.
 ///   delayed     → uzun/değişken windup; erken basışı cezalandırır.
 ///   feint       → aldatma; erken savunmayı boşa düşürür, hasar vermez.
 ///   ranged      → parry ile yansır (posture); dodge ile sadece kurtulursun.
@@ -29,6 +31,7 @@ enum DefenseProfile {
   heavy,
   guardBreak,
   tracking,
+  thrust,
   delayed,
   feint,
   ranged,
@@ -304,6 +307,41 @@ const List<CharacterDef> kCharacters = [
         ],
         staggerBonus: 14,
         weight: 0.8,
+      ),
+      // Faz 2: MİKİRİ açılışı (delici) — parry'le, dodge ile bastır. Sonra parry.
+      ComboPattern(
+        [
+          Beat(
+            kind: BeatKind.meleeHeavy,
+            defense: DefenseProfile.thrust,
+            animKey: 'attack2',
+            windup: .50,
+            active: .15,
+            recover: .36,
+            gapAfter: .20,
+            dodgePre: .26,
+            damage: 22,
+            postureDamage: 0,
+            punishOnDodge: true,
+            mustDefend: true,
+          ),
+          Beat(
+            kind: BeatKind.meleeLight,
+            animKey: 'attack1',
+            windup: .26,
+            active: .13,
+            recover: .22,
+            gapAfter: .30,
+            preWindow: .11,
+            grace: .05,
+            dodgePre: .22,
+            damage: 13,
+            postureDamage: 16,
+          ),
+        ],
+        staggerBonus: 16,
+        weight: 0.7,
+        minPhase: 1,
       ),
     ],
   ),
