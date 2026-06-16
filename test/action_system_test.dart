@@ -92,6 +92,37 @@ void main() {
       expect(normalPos.y, testPos.y);
     });
 
+    test('boss AI okuma/aldatma yalnız gerçek maçta açık (09)', () {
+      const sandbox = TestActionSystem();
+      const real = TestActionSystem(realMatch: true);
+      const normal = NormalActionSystem();
+
+      // Serbest sandbox: deterministik pratik → tüm "okuyan/aldatan" davranışlar
+      // kapalı (feint tuzağı, delayed jitter, kombo-içi adaptasyon, punish'ler).
+      expect(sandbox.bossFeintTrap, isFalse);
+      expect(sandbox.delayedWindupJitter, 0);
+      expect(sandbox.bossInComboAdapt, isFalse);
+      expect(sandbox.bossGreedPunish, isFalse);
+      expect(sandbox.bossGuardBreakPunish, isFalse);
+
+      // Gerçek maç (senaryo) ve normal mod: hepsi açık.
+      for (final s in [real, normal]) {
+        expect(s.bossFeintTrap, isTrue);
+        expect(s.delayedWindupJitter, greaterThan(0));
+        expect(s.bossInComboAdapt, isTrue);
+        expect(s.bossGreedPunish, isTrue);
+        expect(s.bossGuardBreakPunish, isTrue);
+      }
+    });
+
+    test('09 ayar parametreleri makul aralıkta (09)', () {
+      const s = NormalActionSystem();
+      expect(s.feintBaitWindow, greaterThan(0));
+      expect(s.feintBaitLock, greaterThan(s.feintBaitWindow));
+      expect(s.greedPunishChance, inInclusiveRange(0, 1));
+      expect(s.inComboAdaptChance, inInclusiveRange(0, 1));
+    });
+
     test('fighter files read behavior from action systems', () {
       final playerSource = File('lib/player.dart').readAsStringSync();
       final bossSource = File('lib/boss.dart').readAsStringSync();

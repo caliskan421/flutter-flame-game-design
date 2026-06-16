@@ -82,4 +82,23 @@ class TestActionSystem extends ArenaActionSystem {
   // Faz geçişi sahnesi yalnız gerçek maçta; serbest sandbox pratiği bölünmesin (08).
   @override
   bool get bossPhaseStaging => realMatch;
+
+  // --- BOSS AI & ADAPTASYON (09) ---
+  // Serbest sandbox: deterministik pratik için tüm "okuyan/aldatan" davranışlar
+  // kapalı; senaryo gerçek maçında (realMatch) açık. Feint/delayed beat'lerin
+  // KENDİSİ veride durur ama tuzak/jitter/adaptasyon yalnız gerçek maçta işler.
+  @override
+  bool get bossFeintTrap => realMatch;
+
+  @override
+  double get delayedWindupJitter => realMatch ? super.delayedWindupJitter : 0;
+
+  @override
+  bool get bossInComboAdapt => realMatch;
+
+  @override
+  bool get bossGreedPunish => realMatch;
+
+  @override
+  bool get bossGuardBreakPunish => realMatch;
 }

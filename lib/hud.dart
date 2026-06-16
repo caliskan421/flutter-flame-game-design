@@ -529,6 +529,8 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
       'parry: ${m.parrySuccesses}/${m.parryAttempts}  dodge: ${m.dodgeSuccesses}/${m.dodgeAttempts}',
       'vuruş L/H: ${m.lightHits}/${m.heavyHits}  ıska: ${m.attackWhiffs}',
       'denge kırma: ${m.bossPostureBreaks}  bossHasar: ${m.bossDamageTaken}  alınan: ${m.playerDamageTaken}',
+      'AI(09) tuzak: ${m.feintBaited}  greed: ${m.greedPunished}  guardKır: ${m.guardBreakPunished}',
+      'boss: ${boss?.phaseLabelTr ?? '-'}  beat: ${boss?.currentBeat?.defense.name ?? '-'}',
     ];
 
     final panelW = 280.0;

@@ -69,4 +69,36 @@ abstract class ArenaActionSystem {
   double get deathblowSlowmoDuration => 0.55;
   // Faz geçişi sahnesinin süresi (dokunulmaz).
   double get phaseTransitionDuration => 1.05;
+
+  // --- BOSS AI & ADAPTASYON / ALDATMA (09_boss_ai_adaptasyon_sistemi) --------
+  // Bu parametreler 14_zorluk_erisilebilirlik ile ölçeklenmek üzere getter olarak
+  // durur; sandbox'ta öğrenme döngüsü bozulmasın diye agresif okumalar kapatılır.
+
+  // Feint (aldatma) GERÇEK bir tuzak mı? Erken/önceden savunan oyuncuyu kısa
+  // recovery'ye sokar; arkasından gelen gerçek beat punish eder.
+  bool get bossFeintTrap => true;
+  // Erken basışın "yem yuttu" sayıldığı pencere (feint sahte-temasından önce).
+  double get feintBaitWindow => 0.20;
+  // Tuzağa düşen oyuncunun savunma kilidi (cooldown) süresi. Hemen ardından gelen
+  // (hızlandırılmış) gerçek beat'in temasını kapsayacak kadar uzun olmalı.
+  double get feintBaitLock => 0.55;
+
+  // Delayed (ritim kırma): windup'a eklenen runtime jitter büyüklüğü. Çoğunlukla
+  // pozitif (geciktirir); küçük negatif pay metronomu tamamen kırar.
+  double get delayedWindupJitter => 0.20;
+
+  // Kombo İÇİNDE anlık adaptasyon: oyuncunun son cevaplarına göre sıradaki beat'i
+  // dinamik dönüştür (parry'ciye feint/guardBreak, dodge'cuya tracking).
+  bool get bossInComboAdapt => true;
+  // Bir beat'in dönüştürülme olasılığı (eğilim güçlüyken).
+  double get inComboAdaptChance => 0.5;
+
+  // Greed punish: boss açık değilken saldıran oyuncuyu (risksiz poke yerine)
+  // hızlı bir karşı-beat ile cezalandırma olasılığı.
+  bool get bossGreedPunish => true;
+  double get greedPunishChance => 0.5;
+
+  // Guard-break punish: oyuncunun postürü kırılıp açık kalınca boss GARANTİ
+  // hızlı punish beat başlatır.
+  bool get bossGuardBreakPunish => true;
 }

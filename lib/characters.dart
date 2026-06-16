@@ -81,6 +81,37 @@ class Beat {
 
   bool get isRanged => projectileKey != null;
 
+  /// Kombo-İÇİ ADAPTASYON (09): boss çalışırken bir beat'i oyuncu eğilimine göre
+  /// (örn. normal → feint/tracking) dönüştürmek için alan-bazlı kopya.
+  Beat copyWith({
+    BeatKind? kind,
+    DefenseProfile? defense,
+    int? damage,
+    int? postureDamage,
+    GuardDirection? guardDirection,
+    bool? punishOnDodge,
+  }) {
+    return Beat(
+      kind: kind ?? this.kind,
+      defense: defense ?? this.defense,
+      animKey: animKey,
+      windup: windup,
+      active: active,
+      recover: recover,
+      gapAfter: gapAfter,
+      preWindow: preWindow,
+      grace: grace,
+      dodgePre: dodgePre,
+      damage: damage ?? this.damage,
+      postureDamage: postureDamage ?? this.postureDamage,
+      guardDirection: guardDirection ?? this.guardDirection,
+      punishOnDodge: punishOnDodge ?? this.punishOnDodge,
+      mustDefend: mustDefend,
+      projectileKey: projectileKey,
+      projectileSpeed: projectileSpeed,
+    );
+  }
+
   /// Bu beat'i PARRY etmek oyuncuyu cezalandırır mı? (guardBreak)
   bool get parryPunished => defense == DefenseProfile.guardBreak;
 
@@ -349,6 +380,89 @@ const List<CharacterDef> kCharacters = [
         weight: 0.7,
         minPhase: 1,
       ),
+      // Faz 2: ALDATMA tuzağı — parry'le, ORTADAKİ ALDATMA (vuruş gelmez; erken
+      // basarsan tuzağa düşersin), sonra GERÇEK vuruş seni cezalandırır (09).
+      ComboPattern(
+        [
+          Beat(
+            kind: BeatKind.meleeLight,
+            animKey: 'attack1',
+            windup: .30,
+            active: .13,
+            recover: .20,
+            gapAfter: .14,
+            preWindow: .11,
+            grace: .05,
+            dodgePre: .22,
+            damage: 13,
+            postureDamage: 16,
+          ),
+          Beat(
+            kind: BeatKind.feint,
+            defense: DefenseProfile.feint,
+            animKey: 'attack2',
+            windup: .40,
+            active: .14,
+            recover: .20,
+            gapAfter: .10,
+            dodgePre: .22,
+            damage: 0,
+            postureDamage: 0,
+          ),
+          Beat(
+            kind: BeatKind.meleeLight,
+            animKey: 'attack3',
+            windup: .24,
+            active: .13,
+            recover: .26,
+            gapAfter: .30,
+            preWindow: .11,
+            grace: .05,
+            dodgePre: .22,
+            damage: 16,
+            postureDamage: 16,
+          ),
+        ],
+        staggerBonus: 16,
+        weight: 0.7,
+        minPhase: 1,
+      ),
+      // Faz 2: DELAYED açılış — windup değişken (jitter); eski ritimle erken parry
+      // basan ıskalar ve yer. Bekleyip reaktif parry'leyen güvende (09).
+      ComboPattern(
+        [
+          Beat(
+            kind: BeatKind.meleeHeavy,
+            defense: DefenseProfile.delayed,
+            animKey: 'attack3',
+            windup: .46,
+            active: .15,
+            recover: .34,
+            gapAfter: .18,
+            preWindow: .12,
+            grace: .06,
+            dodgePre: .26,
+            damage: 20,
+            postureDamage: 18,
+          ),
+          Beat(
+            kind: BeatKind.meleeLight,
+            animKey: 'attack1',
+            windup: .26,
+            active: .13,
+            recover: .22,
+            gapAfter: .30,
+            preWindow: .11,
+            grace: .05,
+            dodgePre: .22,
+            damage: 13,
+            postureDamage: 16,
+          ),
+        ],
+        staggerBonus: 16,
+        weight: 0.6,
+        minPhase: 1,
+      ),
     ],
   ),
 
@@ -436,6 +550,41 @@ const List<CharacterDef> kCharacters = [
         ],
         staggerBonus: 14,
         weight: 0.7,
+      ),
+      // Faz 2: ALDATMA + KALKAN KIRICI. Aldatmaya kanıp erken basarsan kırmızıyı
+      // (kaçılması gereken) karşılayamazsın (09).
+      ComboPattern(
+        [
+          Beat(
+            kind: BeatKind.feint,
+            defense: DefenseProfile.feint,
+            animKey: 'attack1',
+            windup: .38,
+            active: .13,
+            recover: .18,
+            gapAfter: .12,
+            dodgePre: .22,
+            damage: 0,
+            postureDamage: 0,
+          ),
+          Beat(
+            kind: BeatKind.meleeHeavy,
+            defense: DefenseProfile.guardBreak,
+            animKey: 'attack3',
+            windup: .46,
+            active: .16,
+            recover: .38,
+            gapAfter: .30,
+            dodgePre: .30,
+            damage: 24,
+            postureDamage: 0,
+            punishOnDodge: true,
+            mustDefend: true,
+          ),
+        ],
+        staggerBonus: 14,
+        weight: 0.6,
+        minPhase: 1,
       ),
     ],
   ),

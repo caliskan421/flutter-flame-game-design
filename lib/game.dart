@@ -819,6 +819,10 @@ class CombatMetrics {
   int lightHits = 0;
   int heavyHits = 0;
   int staminaEmptyDenials = 0;
+  // --- BOSS AI & ADAPTASYON (09) ---
+  int feintBaited = 0; // oyuncu aldatmaya kandı (erken savundu)
+  int greedPunished = 0; // boss açık değilken saldıran oyuncu cezalandı
+  int guardBreakPunished = 0; // postürü kırılan oyuncu garanti punish yedi
 
   void reset() {
     fightDuration = 0;
@@ -833,6 +837,9 @@ class CombatMetrics {
     lightHits = 0;
     heavyHits = 0;
     staminaEmptyDenials = 0;
+    feintBaited = 0;
+    greedPunished = 0;
+    guardBreakPunished = 0;
   }
 }
 

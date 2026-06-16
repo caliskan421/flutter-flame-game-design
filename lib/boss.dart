@@ -82,6 +82,16 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   int _nonFeintTotal = 0;
   bool _comboChainBroken = false; // dodge/hit → tam-parry bonusu iptal
   bool _guardCounter = false;
+
+  // --- KOMBO-İÇİ ADAPTASYON (09) ---
+  // Beat'leri runtime'da (oyuncu eğilimine göre) dönüştürmek için seyrek override.
+  // Kombo başında temizlenir; _beat/currentBeat önce buraya bakar.
+  final Map<int, Beat> _beatOverrides = {};
+  int _recentParries = 0; // bu kombo boyunca oyuncunun cevapları
+  int _recentDodges = 0;
+  bool _adaptedThisCombo = false; // kombo başına en fazla bir dönüşüm
+  bool _playerWasStunned = false; // guard-break punish için yükselen-kenar
+  bool _feintBaitedFollowUp = false; // tuzak ısırdı → sıradaki beat hızlanır
   GuardDirection? _followUpGuard;
   double _followUpTimer = 0;
 
@@ -121,7 +131,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   int get currentBeatIndex => _beatIndex;
   List<Beat> get activeBeats => (_activeCombo ?? def.pattern).beats;
   Beat? get currentBeat => (_beatIndex >= 0 && _beatIndex < activeBeats.length)
-      ? activeBeats[_beatIndex]
+      ? (_beatOverrides[_beatIndex] ?? activeBeats[_beatIndex])
       : null;
 
   // --- DEATHBLOW / FAZ SEGMENT MODELİ (06 / 08) ---
@@ -173,6 +183,12 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _followUpTimer = 0;
     _activeCombo = null;
     _beatIndex = -1;
+    _beatOverrides.clear();
+    _recentParries = 0;
+    _recentDodges = 0;
+    _adaptedThisCombo = false;
+    _playerWasStunned = false;
+    _feintBaitedFollowUp = false;
     _pending = false;
     _pendingGrace = 0;
     _pendingBeat = null;
@@ -303,6 +319,11 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       _timer -= dt;
       _machine(dt);
       _tickPending(dt);
+      // GUARD-BREAK punish: oyuncunun postürü YENİ kırıldıysa (stun + posture 0)
+      // garanti hızlı punish. wrongTool stun'ı (posture>0) tetiklemez (09).
+      final pb = game.player.isStunned && game.player.posture <= 0;
+      if (pb && !_playerWasStunned) _maybeGuardBreakPunish();
+      _playerWasStunned = pb;
     } else {
       if (state != BossState.idle) state = BossState.idle;
     }
@@ -440,13 +461,18 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     }
   }
 
-  Beat get _beat => activeBeats[_beatIndex];
+  Beat get _beat => _beatOverrides[_beatIndex] ?? activeBeats[_beatIndex];
 
   // Yeni kombo turu: havuzdan ağırlıklı seçim, sonra approach (ranged → yerinde).
   void _beginNewCombo() {
     _activeCombo = _pickCombo();
+    _beatOverrides.clear();
     _comboChainBroken = false;
     _parriedThisCombo = 0;
+    _recentParries = 0;
+    _recentDodges = 0;
+    _adaptedThisCombo = false;
+    _feintBaitedFollowUp = false;
     storedCombo = 0;
     _nonFeintTotal = _activeCombo!.nonFeintCount;
     _enter(BossState.approach, 0);
@@ -487,7 +513,52 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
   void _startBeat(int i) {
     _beatIndex = i;
-    _enter(BossState.windup, _beat.windup);
+    // Kombo-İÇİ ADAPTASYON: sıradaki beat'i oyuncunun son cevaplarına göre dinamik
+    // dönüştür (parry'ciye feint, dodge'cuya tracking) — desen ezberlenemesin (09).
+    _adaptBeat(i);
+    // DELAYED: windup'u runtime ±jitter ile değiştir; metronom ritmi kırılır (09).
+    double windup = _beat.windup;
+    if (_beat.defense == DefenseProfile.delayed) {
+      final j = game.actionSystem.delayedWindupJitter;
+      windup = (windup + (_rng.nextDouble() - 0.28) * j).clamp(0.1, 2.0);
+    }
+    // Tuzak ısırdıysa bu (gerçek) beat hızlanır → savunma kilidi sürerken temas
+    // eder, punish GERÇEKTEN bağlanır (09).
+    if (_feintBaitedFollowUp) {
+      _feintBaitedFollowUp = false;
+      windup = min(windup, 0.16);
+    }
+    _enter(BossState.windup, windup);
+  }
+
+  // Bu beat'i oyuncu eğilimine göre dönüştür (yalnız "normal", melee beat'ler).
+  // Parry'ye abanan → ALDATMA tuzağı (erken parry'yi boşa düşür, arkadan punish);
+  // dodge'a abanan → TRACKING (dodge'u yakalar, parry zorunlu).
+  void _adaptBeat(int i) {
+    if (!game.actionSystem.bossInComboAdapt || _adaptedThisCombo) return;
+    final base = activeBeats[i];
+    if (base.defense != DefenseProfile.normal || base.isRanged) return;
+    if (_rng.nextDouble() > game.actionSystem.inComboAdaptChance) return;
+
+    final parryLean = _recentParries + _parryHabit * 2;
+    final dodgeLean = _recentDodges + _dodgeHabit * 2;
+    final isLast = i >= activeBeats.length - 1;
+
+    if (parryLean >= 1.4 && parryLean >= dodgeLean && !isLast) {
+      // Feint son beat olamaz: tuzaktan sonra punish edecek gerçek beat gerekir.
+      _beatOverrides[i] = base.copyWith(
+        kind: BeatKind.feint,
+        defense: DefenseProfile.feint,
+        damage: 0,
+        postureDamage: 0,
+        punishOnDodge: false,
+      );
+      if (_nonFeintTotal > 0) _nonFeintTotal--; // feint tam-parry'ye sayılmaz
+      _adaptedThisCombo = true;
+    } else if (dodgeLean >= 1.4 && dodgeLean > parryLean) {
+      _beatOverrides[i] = base.copyWith(defense: DefenseProfile.tracking);
+      _adaptedThisCombo = true;
+    }
   }
 
   // Kombo bitti. Tüm (feint olmayan) beat'ler parry edildiyse büyük posture
@@ -698,6 +769,11 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
   void _resolveContact(Beat beat, Projectile? proj) {
     if (dying) return;
+    // ALDATMA: gerçek vuruş YOK. Önceden/erken savunan oyuncu tuzağa düşer (09).
+    if (beat.kind == BeatKind.feint || beat.defense == DefenseProfile.feint) {
+      _resolveFeint(beat, proj);
+      return;
+    }
     final p = game.player;
     // Gerçek i-frame: dodge'un dokunulmazlık penceresindeyse HER saldırı geçersiz
     // (tracking dahil). Sıkı bir pencere; usta zamanlamayı ödüllendirir (04).
@@ -748,6 +824,36 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       } else {
         _beginPending(beat, proj);
       }
+    }
+  }
+
+  // ALDATMA (feint) çözümü (09). Telegraf normal saldırı gibi görünür ama vuruş
+  // gelmez. Erken/önceden savunan (parry/dodge) oyuncu YEM YUTAR → kısa savunma
+  // kilidi; arkadan gelen gerçek beat punish eder. BASMAMAK her zaman güvenli:
+  // disiplinli oyuncu cezalanmaz, yalnız refleksle erken basan tuzağa düşer.
+  void _resolveFeint(Beat beat, Projectile? proj) {
+    proj?.deflect();
+    final p = game.player;
+    final w = game.actionSystem.feintBaitWindow;
+    final baited =
+        game.actionSystem.bossFeintTrap &&
+        (p.isParrying ||
+            p.isDodging ||
+            p.isInvulnerable ||
+            p.sinceParry <= w ||
+            p.sinceDodge <= w);
+    if (baited) {
+      p.baitPunish(game.actionSystem.feintBaitLock);
+      _feintBaitedFollowUp = true; // sıradaki gerçek beat hızlanıp punish etsin
+      game.metrics.feintBaited++;
+      // Erken savunma eğilimi → bu oyuncuya daha çok tuzak (parry habit artar).
+      _registerHabit(parry: true);
+      _comboChainBroken = true;
+      Sfx.whiff();
+      game.spawnSpark(_topCenter, _kAmber);
+      game.spawnPopup(_topCenter, 'TUZAK!', fontSize: 16, color: _kAmber, rise: 26);
+    } else {
+      game.spawnPopup(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500);
     }
   }
 
@@ -847,6 +953,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     }
 
     _parriedThisCombo++;
+    _recentParries++;
     storedCombo = _parriedThisCombo;
     _armParryFollowUp(beat);
     final dmg = perfect
@@ -945,6 +1052,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     game.player.onDodgeSuccess();
     game.metrics.dodgeSuccesses++;
     _registerHabit(dodge: true);
+    _recentDodges++;
     proj?.deflect();
     _comboChainBroken = true; // parry zinciri kırıldı (bonus yok)
 
@@ -1066,7 +1174,10 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       game.spawnPopup(_topCenter + Vector2(0, 30), '-$hp', fontSize: 20);
       _decidePressure();
     } else {
-      // Boss açık değil: yalnız posture chip. Riskli (boss saldırısı sürebilir).
+      // Boss açık değil. GREED: oyuncu açık olmadığı halde saldırıyor. Boss bunu
+      // okuyup (olasılıksal, fazla göre sıklaşan) hızlı bir karşı-beat başlatabilir
+      // → F spam'i artık risksiz değil (09). Aksi halde yalnız riskli posture chip.
+      if (_maybeGreedPunish()) return;
       applyPostureDamage(attackPostureChip);
       Sfx.parry();
       game.spawnSpark(_topCenter, _kAmber);
@@ -1094,8 +1205,74 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     );
   }
 
+  // GREED PUNISH (09): boss açık değilken saldıran oyuncuya hızlı karşı-beat.
+  // Parry'lenebilir (preWindow>0) → ceza adil: reflekssiz over-extend yer, usta
+  // savunma kurtarır. Faz arttıkça olasılık ve hız artar.
+  bool _maybeGreedPunish() {
+    if (!game.actionSystem.bossGreedPunish || dying) return false;
+    if (state == BossState.phaseTransition) return false;
+    final chance = game.actionSystem.greedPunishChance * (1 + phase * 0.25);
+    if (_rng.nextDouble() > chance) return false;
+    game.metrics.greedPunished++;
+    game.add(ComboText(_topCenter, 'AÇGÖZLÜ!'));
+    Sfx.whiff();
+    _startCounterBeat(windup: 0.18 - phase * 0.02, damage: 14);
+    return true;
+  }
+
+  // GUARD-BREAK PUNISH (09): oyuncunun postürü kırılıp açık kaldıysa boss GARANTİ
+  // hızlı punish başlatır. Oyuncu zaten kilitli olduğundan bu beat'i karşılayamaz.
+  void _maybeGuardBreakPunish() {
+    if (!game.actionSystem.bossGuardBreakPunish || dying) return;
+    if (state == BossState.staggered ||
+        state == BossState.phaseTransition ||
+        state == BossState.offBalance) {
+      return;
+    }
+    game.metrics.guardBreakPunished++;
+    game.add(ComboText(_topCenter, 'SAVUNMA KIRIK!'));
+    _startCounterBeat(windup: 0.22, damage: 16);
+  }
+
+  // Tek-beat hızlı punish komboyu kur ve windup'a gir (greed / guard-break).
+  void _startCounterBeat({required double windup, required int damage}) {
+    _clearPending();
+    _beatOverrides.clear();
+    _comboChainBroken = true;
+    _guardCounter = false;
+    final source = def.pattern.beats.last;
+    final counter = Beat(
+      kind: source.kind == BeatKind.feint ? BeatKind.meleeLight : source.kind,
+      defense: DefenseProfile.normal,
+      animKey: source.animKey,
+      windup: windup.clamp(0.1, 1.0),
+      active: source.active,
+      recover: source.recover,
+      gapAfter: .18,
+      preWindow: 0.12,
+      grace: 0.05,
+      dodgePre: 0.22,
+      damage: damage,
+      postureDamage: 0,
+      punishOnDodge: false,
+      mustDefend: true,
+      projectileKey: source.projectileKey,
+      projectileSpeed: source.projectileSpeed,
+    );
+    _activeCombo = ComboPattern([counter], staggerBonus: 0);
+    _nonFeintTotal = 1;
+    _parriedThisCombo = 0;
+    _recentParries = 0;
+    _recentDodges = 0;
+    _adaptedThisCombo = true; // tek-beat punish tekrar dönüştürülmesin
+    storedCombo = 0;
+    _beatIndex = 0;
+    _enter(BossState.windup, counter.windup);
+  }
+
   void _shieldHeavyPunish() {
     _clearPending();
+    _beatOverrides.clear();
     _comboChainBroken = true;
     game.player.breakPosture();
     Sfx.block();

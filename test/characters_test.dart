@@ -148,4 +148,69 @@ void main() {
       }
     });
   });
+
+  group('boss AI adaptasyon / aldatma (09)', () {
+    Iterable<Beat> beatsOf(String id) =>
+        characterById(id).combos.expand((c) => c.beats);
+
+    test('gerçek rakipler artık feint ve delayed beat içerir', () {
+      // knight_2: hem ALDATMA hem DELAYED (ritim kırma) mix-up taşır.
+      final k2 = beatsOf('knight_2');
+      expect(k2.any((b) => b.defense == DefenseProfile.feint), isTrue);
+      expect(k2.any((b) => b.defense == DefenseProfile.delayed), isTrue);
+      // knight_3: ALDATMA + arkasından kırmızı (guardBreak) tuzağı taşır.
+      final k3 = beatsOf('knight_3');
+      expect(k3.any((b) => b.defense == DefenseProfile.feint), isTrue);
+    });
+
+    test('feint asla kombonun SON beat\'i değil (arkadan punish gerekir)', () {
+      for (final c in kCharacters) {
+        for (final combo in c.combos) {
+          if (combo.beats.isEmpty) continue;
+          final last = combo.beats.last;
+          expect(
+            last.defense == DefenseProfile.feint ||
+                last.kind == BeatKind.feint,
+            isFalse,
+            reason: '${c.id}: feint son beat olamaz',
+          );
+        }
+      }
+    });
+
+    test('feint ve delayed punishesEarly (erken basışı cezalandırır)', () {
+      const feint = Beat(kind: BeatKind.feint, animKey: 'a',
+          defense: DefenseProfile.feint, damage: 0, postureDamage: 0);
+      const delayed = Beat(kind: BeatKind.meleeHeavy, animKey: 'a',
+          defense: DefenseProfile.delayed);
+      const normal = Beat(kind: BeatKind.meleeLight, animKey: 'a');
+      expect(feint.punishesEarly, isTrue);
+      expect(delayed.punishesEarly, isTrue);
+      expect(normal.punishesEarly, isFalse);
+    });
+
+    test('Beat.copyWith kombo-içi dönüşümü üretir (normal → feint / tracking)', () {
+      const base = Beat(
+        kind: BeatKind.meleeLight,
+        animKey: 'attack1',
+        damage: 14,
+        postureDamage: 16,
+      );
+      final feint = base.copyWith(
+        kind: BeatKind.feint,
+        defense: DefenseProfile.feint,
+        damage: 0,
+        postureDamage: 0,
+      );
+      expect(feint.defense, DefenseProfile.feint);
+      expect(feint.damage, 0);
+      expect(feint.postureDamage, 0);
+      expect(feint.animKey, base.animKey); // süre/anim korunur
+      expect(feint.windup, base.windup);
+
+      final tracking = base.copyWith(defense: DefenseProfile.tracking);
+      expect(tracking.defense, DefenseProfile.tracking);
+      expect(tracking.damage, base.damage); // dokunulmayan alanlar korunur
+    });
+  });
 }

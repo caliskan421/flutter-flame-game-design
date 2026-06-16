@@ -192,6 +192,15 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
       state == PlayerState.stunned ||
       state == PlayerState.hurt;
 
+  // Boss'un GREED okuması için (09): saldırının savunmasız RECOVERY dilimindeyiz
+  // (active bitti, henüz idle değiliz) — light burada cancel edilebilir, ama hâlâ
+  // boss'un hızlı karşı-beat'i için "açık" sayılır. Heavy ise tüm recovery boyunca.
+  bool get isInAttackRecovery =>
+      isAttacking && _atkT >= _atkWindup + _atkActive;
+
+  // Boss'un GUARD-BREAK punish okuması için (09).
+  bool get isStunned => state == PlayerState.stunned;
+
   // Light saldırının recovery'sinin geç kısmı dodge/parry ile iptal edilebilir
   // (defansa pürüzsüz geçiş). Heavy taahhüttür: iptal edilemez (05).
   bool get _canCancelAttack =>
@@ -535,6 +544,26 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _sq = -0.14;
     _tiltV += 4;
     if (health <= 0) _startDeath();
+  }
+
+  // FEINT TUZAĞI (09): aldatmaya kanıp erken savunma yaptın. Hasarsız ama kısa
+  // SAVUNMA KİLİDİ: parry/dodge cooldown'ı uzar, tempo gider → arkadan gelen
+  // gerçek beat'i karşılayamazsın. Stun değil (kontrol sende), yalnız "yanlış
+  // anda harcadın" cezası.
+  void baitPunish(double lock) {
+    if (dying) return;
+    _tempo = 0;
+    _parryWindow = 0;
+    _dodgeWindow = 0;
+    _parryCooldown = max(_parryCooldown, lock);
+    _dodgeCooldown = max(_dodgeCooldown, lock);
+    if (state == PlayerState.parry || state == PlayerState.block) {
+      state = PlayerState.idle;
+      _parryGuard = GuardDirection.any;
+      _fill = kWhite;
+    }
+    _sq = -0.08;
+    _tiltV += 3;
   }
 
   // TEST: ölümsüzlük için can rejeni biriktiricisi.
