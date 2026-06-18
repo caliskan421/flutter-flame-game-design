@@ -33,7 +33,7 @@ import 'theme.dart';
 
 enum GamePhase { testSelect, intro, playing, won, lost }
 
-enum TestAttackMode { combo, attack1, attack2, attack3, defend }
+enum TestAttackMode { combo, attack1, attack2, attack3, defend, movement }
 
 enum PlayerAttackType { light, heavy }
 
@@ -45,6 +45,7 @@ bool testAttackModeUsesScenarioRules(TestAttackMode attackMode) {
     case TestAttackMode.combo:
       return true;
     case TestAttackMode.defend:
+    case TestAttackMode.movement:
       return false;
   }
 }
@@ -61,6 +62,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   ArenaActionSystem actionSystem = const TestActionSystem();
   TestAttackMode testAttackMode = TestAttackMode.attack1;
   CharacterDef? selectedChar;
+  bool get movementMechanicsMode => testAttackMode == TestAttackMode.movement;
 
   // Test arenası açık mı? (ölümsüzlük + sabit yakın mesafe + yerinde döngü)
   bool get testMode => actionSystem.isTest;
@@ -100,10 +102,18 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   Timer? _gamepadRefreshTimer;
   final Set<String> _activeGamepadInputs = {};
   List<GamepadController> _listedGamepads = [];
+  bool _moveLeftHeld = false;
+  bool _moveRightHeld = false;
+  bool _moveLeftRun = false;
+  bool _moveRightRun = false;
+  double _lastLeftTap = -999;
+  double _lastRightTap = -999;
+  double _inputClock = 0;
 
   static const double _margin = 30;
   static const double _sidebarW = 312;
   static const double _gutter = 26;
+  static const double _movementDoubleTapWindow = 0.28;
 
   @override
   Color backgroundColor() => kWhite;
@@ -189,6 +199,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     groundY = arenaRect.top + arenaRect.height * 0.74;
     final centerX = arenaRect.center.dx;
     player.place(Vector2(centerX - Boss.standGap / 2, groundY));
+    if (movementMechanicsMode) {
+      player.place(Vector2(centerX, groundY));
+      player.setMovementBounds(arenaRect.deflate(64));
+    }
     boss?.place(_bossBasePos());
     boss?.scale = Vector2.all(combatantScale);
   }
@@ -214,6 +228,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       TestAttackMode.attack3 => 2,
       TestAttackMode.combo => 0,
       TestAttackMode.defend => 0,
+      TestAttackMode.movement => 0,
     };
     final sourceBeat = base.pattern.beats[index];
     final lowBeat = base.pattern.beats[0];
@@ -282,6 +297,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       TestAttackMode.attack3 => centerGuardBeat(sourceBeat),
       TestAttackMode.combo => sourceBeat,
       TestAttackMode.defend => sourceBeat,
+      TestAttackMode.movement => sourceBeat,
     };
     final label = switch (attackMode) {
       TestAttackMode.attack1 => 'ALT SALDIRI',
@@ -289,6 +305,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       TestAttackMode.attack3 => 'DEFEND SALDIRISI',
       TestAttackMode.combo => 'HİKAYE MODU',
       TestAttackMode.defend => 'KALKAN TESTİ',
+      TestAttackMode.movement => 'HAREKET MEKANİKLERİ',
     };
     final blurb = switch (attackMode) {
       TestAttackMode.attack1 =>
@@ -301,6 +318,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
         'Kalkan penceresi, alt savunma, üst savunma ve SPACE/defend aynı döngüde.',
       TestAttackMode.defend =>
         'Rakip idle/defend döner. F kalkanda denge azaltır; G kalkanda ağır ceza yedirir.',
+      TestAttackMode.movement =>
+        'Samuray yatay eksende yürür; çift basış aynı yönde koşuya çevirir.',
     };
 
     return CharacterDef(
@@ -331,6 +350,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
   // TEST: Şövalye I preset'i seçilince doğrudan test arenasını başlat.
   void chooseTestAttack(TestAttackMode attackMode) {
+    if (attackMode == TestAttackMode.movement) {
+      startMovementMechanics();
+      return;
+    }
     if (phase == GamePhase.testSelect && attackMode == TestAttackMode.combo) {
       startCombatScenarioIntro();
       return;
@@ -342,6 +365,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     testAttackMode = attackMode;
     selectedChar = _testDefFor(attackMode);
     _setTestRealMatch(testAttackModeUsesScenarioRules(attackMode));
+    player.setMovementTrainingEnabled(false);
+    _clearMovementInput();
     final old = boss;
     if (old != null) old.removeFromParent();
     final b = Boss(selectedChar!);
@@ -355,6 +380,30 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
         attackMode == TestAttackMode.combo) {
       b.enterTestGuard();
     }
+    overlays.add('testPanel');
+  }
+
+  void startMovementMechanics() {
+    testAttackMode = TestAttackMode.movement;
+    selectedChar = null;
+    actionSystem = const TestActionSystem();
+    boss?.removeFromParent();
+    boss = null;
+    _combatIntroRunning = false;
+    setIntroPresentation(false);
+    player.reset();
+    player.place(Vector2(arenaRect.center.dx, groundY));
+    player.setMovementBounds(arenaRect.deflate(64));
+    player.setMovementTrainingEnabled(true);
+    _clearMovementInput();
+    metrics.reset();
+    _hitstop = 0;
+    _slowmo = 0;
+    _shakeT = 0;
+    phase = GamePhase.playing;
+    overlays.remove('testSelect');
+    overlays.remove('won');
+    overlays.remove('lost');
     overlays.add('testPanel');
   }
 
@@ -413,6 +462,17 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // TEST paneli: maçı yeniden başlatmadan can/denge/konum sıfırla.
   void resetTestMatch() {
     player.reset();
+    if (movementMechanicsMode) {
+      player.place(Vector2(arenaRect.center.dx, groundY));
+      player.setMovementBounds(arenaRect.deflate(64));
+      player.setMovementTrainingEnabled(true);
+      _clearMovementInput();
+      metrics.reset();
+      _hitstop = 0;
+      _slowmo = 0;
+      _shakeT = 0;
+      return;
+    }
     boss?.reset();
     if (testAttackMode == TestAttackMode.defend ||
         testAttackMode == TestAttackMode.combo) {
@@ -435,6 +495,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     actionSystem = const TestActionSystem();
     testAttackMode = TestAttackMode.attack1;
     selectedChar = null;
+    player.setMovementTrainingEnabled(false);
+    _clearMovementInput();
     boss?.removeFromParent();
     boss = null;
     _combatIntroRunning = false;
@@ -453,6 +515,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // --- MAÇI BAŞLAT ---
   void beginMatch() {
     player.reset();
+    player.setMovementTrainingEnabled(false);
+    _clearMovementInput();
     boss?.reset();
     metrics.reset();
     _hitstop = 0;
@@ -467,6 +531,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   void restart() {
     overlays.remove('won');
     overlays.remove('lost');
+    if (movementMechanicsMode) {
+      startMovementMechanics();
+      return;
+    }
     chooseTestAttack(testAttackMode);
   }
 
@@ -669,6 +737,72 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     if (action == ArenaInputAction.block) player.tryBlockEnd();
   }
 
+  bool _handleMovementKeyDown(LogicalKeyboardKey key) {
+    if (!movementMechanicsMode ||
+        phase != GamePhase.playing ||
+        overlays.isActive('controls')) {
+      return false;
+    }
+    if (key == LogicalKeyboardKey.keyZ) {
+      _moveLeftRun = _inputClock - _lastLeftTap <= _movementDoubleTapWindow;
+      _lastLeftTap = _inputClock;
+      _moveLeftHeld = true;
+      _applyMovementInput();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyX) {
+      _moveRightRun = _inputClock - _lastRightTap <= _movementDoubleTapWindow;
+      _lastRightTap = _inputClock;
+      _moveRightHeld = true;
+      _applyMovementInput();
+      return true;
+    }
+    return false;
+  }
+
+  bool _handleMovementKeyUp(LogicalKeyboardKey key) {
+    if (!movementMechanicsMode) return false;
+    if (key == LogicalKeyboardKey.keyZ) {
+      _moveLeftHeld = false;
+      _moveLeftRun = false;
+      _applyMovementInput();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyX) {
+      _moveRightHeld = false;
+      _moveRightRun = false;
+      _applyMovementInput();
+      return true;
+    }
+    return false;
+  }
+
+  void _applyMovementInput() {
+    if (_moveLeftHeld && !_moveRightHeld) {
+      player.setHorizontalMove(-1, running: _moveLeftRun);
+    } else if (_moveRightHeld && !_moveLeftHeld) {
+      player.setHorizontalMove(1, running: _moveRightRun);
+    } else if (_moveLeftHeld && _moveRightHeld) {
+      final leftNewer = _lastLeftTap >= _lastRightTap;
+      player.setHorizontalMove(
+        leftNewer ? -1 : 1,
+        running: leftNewer ? _moveLeftRun : _moveRightRun,
+      );
+    } else {
+      player.setHorizontalMove(0, running: false);
+    }
+  }
+
+  void _clearMovementInput() {
+    _moveLeftHeld = false;
+    _moveRightHeld = false;
+    _moveLeftRun = false;
+    _moveRightRun = false;
+    _lastLeftTap = -999;
+    _lastRightTap = -999;
+    player.setHorizontalMove(0, running: false);
+  }
+
   // --- HITSTOP & FX YARDIMCILARI ---
   void requestHitstop(double d) {
     if (d > _hitstop) _hitstop = d;
@@ -727,6 +861,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
   @override
   void update(double dt) {
+    _inputClock += dt;
     // Zaman ölçeği: hitstop (kısa sert donma) önceliklidir; yoksa slow-mo
     // (deathblow/faz, daha uzun/hafif). İkisi de gerçek dt ile azalır, sahne
     // ölçeklenmiş dt ile güncellenir. Shake zamanlayıcısı da gerçek dt ile akar.
@@ -789,6 +924,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     if (event is KeyDownEvent) {
       final k = event.logicalKey;
       if (controls.captureKeyboard(k)) return KeyEventResult.handled;
+      if (_handleMovementKeyDown(k)) return KeyEventResult.handled;
 
       // Debug overlay aç/kapa (her fazda).
       if (k == LogicalKeyboardKey.backquote || k == LogicalKeyboardKey.digit0) {
@@ -803,6 +939,9 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       }
       // Diğer fazlarda enter/space yok sayılır — seçim butonlarla yapılır.
     } else if (event is KeyUpEvent) {
+      if (_handleMovementKeyUp(event.logicalKey)) {
+        return KeyEventResult.handled;
+      }
       final action = controls.actionForKeyboard(event.logicalKey);
       if (action != null) {
         _handleInputActionReleased(action);

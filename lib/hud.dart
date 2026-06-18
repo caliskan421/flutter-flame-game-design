@@ -142,6 +142,12 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
     final double x = pad;
     final double w = s.width / scale - pad * 2;
 
+    if (game.movementMechanicsMode) {
+      _renderMovementMechanics(canvas, x, w, bottomCoord);
+      canvas.restore();
+      return;
+    }
+
     final def = game.selectedChar;
     if (def == null) {
       _renderPlaceholder(canvas, x, w, bottomCoord);
@@ -297,6 +303,61 @@ class Hud extends PositionComponent with HasGameReference<BossArenaGame> {
     canvas.restore();
 
     if (game.debug) _renderDebug(canvas);
+  }
+
+  void _renderMovementMechanics(
+    Canvas canvas,
+    double x,
+    double w,
+    double bottomCoord,
+  ) {
+    double y = 22;
+    _kicker.render(canvas, 'ALAN', Vector2(x, y));
+    y += 18;
+    _title.render(canvas, 'HAREKET', Vector2(x, y));
+    y += 26;
+    _title.render(canvas, 'MEKANİKLERİ', Vector2(x, y));
+    y += 32;
+    _divider(canvas, x, y, w);
+    y += 20;
+
+    _section.render(canvas, 'KARAKTER', Vector2(x, y));
+    y += 22;
+    _label.render(canvas, 'Samuray', Vector2(x, y));
+    y += 30;
+
+    _section.render(canvas, 'TUŞLAR', Vector2(x, y));
+    y += 22;
+    _label.render(canvas, 'Z', Vector2(x, y));
+    _statusVal.render(canvas, 'SOL', Vector2(x + 70, y - 1));
+    y += 24;
+    _label.render(canvas, 'X', Vector2(x, y));
+    _statusVal.render(canvas, 'SAĞ', Vector2(x + 70, y - 1));
+    y += 30;
+
+    _section.render(canvas, 'DURUM', Vector2(x, y));
+    y += 22;
+    final p = game.player;
+    final moving = p.isMovingHorizontally;
+    _label.render(canvas, 'Hareket', Vector2(x, y));
+    (moving ? _statusVal : _statusOff).render(
+      canvas,
+      moving ? 'AÇIK' : 'beklemede',
+      Vector2(x + 86, y - 1),
+    );
+    y += 24;
+    _label.render(canvas, 'Tempo', Vector2(x, y));
+    (p.isRunningHorizontally ? _statusVal : _statusOff).render(
+      canvas,
+      p.isRunningHorizontally ? 'KOŞU' : 'YÜRÜYÜŞ',
+      Vector2(x + 86, y - 1),
+    );
+
+    _foot.render(
+      canvas,
+      'Çift Z/X aynı yönde koşu başlatır',
+      Vector2(x, bottomCoord - 24),
+    );
   }
 
   // --------------------------------------------------------------------------

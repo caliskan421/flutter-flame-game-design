@@ -53,6 +53,7 @@ void main() {
       expect(testAttackModeUsesScenarioRules(TestAttackMode.attack3), isTrue);
       expect(testAttackModeUsesScenarioRules(TestAttackMode.combo), isTrue);
       expect(testAttackModeUsesScenarioRules(TestAttackMode.defend), isFalse);
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.movement), isFalse);
     });
 
     test('stamina is unlimited only in the sandbox test arena', () {

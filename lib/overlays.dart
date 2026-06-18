@@ -126,7 +126,7 @@ class TestSelectOverlay extends StatelessWidget {
                 const SizedBox(width: 18),
                 const Expanded(
                   child: _Body(
-                    'Samuray ve Şövalye I yakın mesafede kalır. Tekli saldırılar tekrar eder; ALT/ÜST/DEF ve HİKAYE gerçek senaryo kurallarını kullanır.',
+                    'Samuray ve Şövalye I yakın mesafede kalır. Tekli saldırılar tekrar eder; ALT/ÜST/DEF ve HİKAYE gerçek senaryo kurallarını kullanır. Hareket mekanikleri samurayın serbest yatay hareket alanıdır.',
                   ),
                 ),
               ],
@@ -162,6 +162,7 @@ class _TestAttackGrid extends StatelessWidget {
         _attackButton('DEFEND 3', TestAttackMode.attack3),
         _attackButton('KALKAN', TestAttackMode.defend),
         _attackButton('HİKAYE MODU', TestAttackMode.combo),
+        _attackButton('HAREKET MEKANİKLERİ', TestAttackMode.movement),
       ],
     );
   }
@@ -212,17 +213,21 @@ class TestPanelOverlay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _smallAttackButton('ALT', TestAttackMode.attack1),
-                      _smallAttackButton('ÜST', TestAttackMode.attack2),
-                      _smallAttackButton('DEF', TestAttackMode.attack3),
-                      _smallAttackButton('KALKAN', TestAttackMode.defend),
-                      _smallAttackButton('HİKAYE', TestAttackMode.combo),
-                    ],
-                  ),
+                  if (game.movementMechanicsMode)
+                    const _MovementMechanicsHelp()
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _smallAttackButton('ALT', TestAttackMode.attack1),
+                        _smallAttackButton('ÜST', TestAttackMode.attack2),
+                        _smallAttackButton('DEF', TestAttackMode.attack3),
+                        _smallAttackButton('KALKAN', TestAttackMode.defend),
+                        _smallAttackButton('HİKAYE', TestAttackMode.combo),
+                        _smallAttackButton('HAREKET', TestAttackMode.movement),
+                      ],
+                    ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -274,7 +279,19 @@ class TestPanelOverlay extends StatelessWidget {
       TestAttackMode.attack3 => 'DEFEND SALDIRISI',
       TestAttackMode.defend => 'KALKAN TESTİ',
       TestAttackMode.combo => 'HİKAYE MODU',
+      TestAttackMode.movement => 'HAREKET MEKANİKLERİ',
     };
+  }
+}
+
+class _MovementMechanicsHelp extends StatelessWidget {
+  const _MovementMechanicsHelp();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _Body(
+      'Z sola, X sağa yürütür. Aynı tuşa hızlı çift basınca samuray koşuya geçer ve gittiği yöne döner.',
+    );
   }
 }
 

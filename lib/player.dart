@@ -146,6 +146,12 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
 
   double _stateTimer = 0;
   double _t = 0;
+  bool _movementTraining = false;
+  int _moveDir = 0;
+  bool _moveRunning = false;
+  int _facing = 1;
+  double _moveOffset = 0;
+  Rect _moveBounds = Rect.zero;
 
   // Son parry / dodge basışından bu yana geçen süre (boss tolerans okur).
   double sinceParry = 999;
@@ -186,6 +192,9 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   bool get isDodging => _dodgeWindow > 0;
   bool get isAttacking => state == PlayerState.attack;
   bool get isBlocking => state == PlayerState.block;
+  bool get movementTrainingActive => _movementTraining;
+  bool get isMovingHorizontally => _movementTraining && _moveDir != 0;
+  bool get isRunningHorizontally => isMovingHorizontally && _moveRunning;
   bool get isBusy =>
       isAttacking ||
       state == PlayerState.riposte ||
@@ -224,6 +233,26 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   void place(Vector2 p) {
     position = p;
     _basePos = p.clone();
+    _moveOffset = 0;
+  }
+
+  void setMovementTrainingEnabled(bool enabled) {
+    _movementTraining = enabled;
+    if (!enabled) {
+      _moveDir = 0;
+      _moveRunning = false;
+      _moveOffset = 0;
+    }
+  }
+
+  void setMovementBounds(Rect bounds) {
+    _moveBounds = bounds;
+  }
+
+  void setHorizontalMove(int direction, {required bool running}) {
+    _moveDir = direction.sign;
+    _moveRunning = running && _moveDir != 0;
+    if (_moveDir != 0) _facing = _moveDir;
   }
 
   void reset() {
@@ -268,6 +297,9 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     _swordDropPlayed = false;
     _testRegenAcc = 0;
     _kb = _kbV = _sq = _sqV = _tilt = _tiltV = 0;
+    _moveDir = 0;
+    _moveRunning = false;
+    _moveOffset = 0;
     if (_basePos != Vector2.zero()) position = _basePos.clone();
   }
 
@@ -634,6 +666,7 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     if (_dodgeWindow > 0) _dodgeWindow -= dt;
     if (_dodgeCooldown > 0) _dodgeCooldown -= dt;
     if (_attackCooldown > 0) _attackCooldown -= dt;
+    _updateMovementTraining(dt);
 
     final regen = game.actionSystem.playerHealthRegenPerSecond;
     if (regen > 0 && health < 100) {
@@ -700,9 +733,22 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
     position =
         _basePos +
         Vector2(
-          game.actionSystem.playerRenderKnockback(_kb) + _dodgeVisualOffset(),
+          _moveOffset +
+              game.actionSystem.playerRenderKnockback(_kb) +
+              _dodgeVisualOffset(),
           0,
         );
+  }
+
+  void _updateMovementTraining(double dt) {
+    if (!_movementTraining || _moveDir == 0 || isBusy || dying) return;
+    final speed = _moveRunning ? 410.0 : 170.0;
+    _moveOffset += _moveDir * speed * dt;
+    if (!_moveBounds.isEmpty) {
+      final minOffset = _moveBounds.left - _basePos.x;
+      final maxOffset = _moveBounds.right - _basePos.x;
+      _moveOffset = _moveOffset.clamp(minOffset, maxOffset).toDouble();
+    }
   }
 
   double _dodgeVisualOffset() {
@@ -720,6 +766,9 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   Sprite _frameFor() {
     switch (state) {
       case PlayerState.idle:
+        if (_movementTraining && _moveDir != 0) {
+          return _sprites.loop(_moveRunning ? 'run' : 'walk', _t, 0.075);
+        }
         return _sprites.loop('idle', _t, 0.16);
       case PlayerState.parry:
         if (_parryGuard == GuardDirection.low) {
@@ -789,12 +838,18 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
             ))
         : _spritePaint;
 
+    canvas.save();
+    if (_facing < 0) {
+      canvas.translate(size.x, 0);
+      canvas.scale(-1, 1);
+    }
     sprite.render(
       canvas,
       position: Vector2(left, top),
       size: Vector2(s, s),
       overridePaint: paint,
     );
+    canvas.restore();
 
     _renderParryRing(canvas);
     _renderDodgeStreak(canvas);
