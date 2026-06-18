@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:boss_parry_arena/game.dart';
 import 'package:boss_parry_arena/normal_action_system.dart';
 import 'package:boss_parry_arena/test_action_system.dart';
 import 'package:flame/components.dart';
@@ -44,6 +45,14 @@ void main() {
       expect(real.minBossHealth, 0);
       expect(real.playerHealthRegenPerSecond, 0);
       expect(real.bossHealthRegenPerSecond, 0);
+    });
+
+    test('knight_1 repeated attacks use story scenario rules', () {
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.attack1), isTrue);
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.attack2), isTrue);
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.attack3), isTrue);
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.combo), isTrue);
+      expect(testAttackModeUsesScenarioRules(TestAttackMode.defend), isFalse);
     });
 
     test('stamina is unlimited only in the sandbox test arena', () {

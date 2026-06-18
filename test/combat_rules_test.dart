@@ -4,6 +4,7 @@
 
 import 'dart:math' as math;
 
+import 'package:boss_parry_arena/boss.dart';
 import 'package:boss_parry_arena/characters.dart';
 import 'package:boss_parry_arena/player.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,7 +45,11 @@ void main() {
     test('spam sonrası eski beat penceresinde basış ARTIK başarısız', () {
       // Temas anında basıştan 0.10s geçmiş: taze pencerede başarı, spam'de değil.
       const sincePress = 0.10;
-      const beat = Beat(kind: BeatKind.meleeLight, animKey: 'a', preWindow: 0.12);
+      const beat = Beat(
+        kind: BeatKind.meleeLight,
+        animKey: 'a',
+        preWindow: 0.12,
+      );
 
       final freshWin = effectiveParryWindow(
         beat.preWindow,
@@ -104,6 +109,27 @@ void main() {
   });
 
   group('deathblow / segment model (06/08)', () {
+    test(
+      'denge kırığında F küçük tekrar hasarı verir, G infaz rolünü korur',
+      () {
+        expect(Boss.attackHpStaggeredLight, 15);
+      },
+    );
+
+    test(
+      'G infaz faz geçişinde ağır saldırının kalan süresi kadar hurt tutar',
+      () {
+        expect(
+          Boss.phaseTransitionDeathblowHurtHold,
+          Player.heavyAtkActive + Player.heavyAtkRecover,
+        );
+      },
+    );
+
+    test('G infaz kesilme sesi ağır kılıç çekişinden sonra gecikir', () {
+      expect(Boss.heavyDeathblowSfxDelay, greaterThan(Player.heavyAtkActive));
+    });
+
     test('şövalye rakipler 2 infaz ister; varsayılan tek infaz', () {
       expect(characterById('knight_1').deathblowsRequired, 2);
       expect(characterById('knight_2').deathblowsRequired, 2);
@@ -113,24 +139,42 @@ void main() {
       expect(characterById('fire_wizard').deathblowsRequired, 1);
     });
 
-    test('son segment veya düşük HP eşiği öldürür, aksi halde segment siler', () {
-      const required = 2, exec = 30;
-      // Yüksek HP, ilk infaz: öldürmez (segment siler).
-      expect(
-        deathblowLethal(hpBefore: 90, done: 1, required: required, execThreshold: exec),
-        isFalse,
-      );
-      // Gerekli sayıya ulaşan infaz: öldürür.
-      expect(
-        deathblowLethal(hpBefore: 60, done: 2, required: required, execThreshold: exec),
-        isTrue,
-      );
-      // Düşük HP'de (eşik altı) ilk infaz bile öldürür.
-      expect(
-        deathblowLethal(hpBefore: 25, done: 1, required: required, execThreshold: exec),
-        isTrue,
-      );
-    });
+    test(
+      'son segment veya düşük HP eşiği öldürür, aksi halde segment siler',
+      () {
+        const required = 2, exec = 30;
+        // Yüksek HP, ilk infaz: öldürmez (segment siler).
+        expect(
+          deathblowLethal(
+            hpBefore: 90,
+            done: 1,
+            required: required,
+            execThreshold: exec,
+          ),
+          isFalse,
+        );
+        // Gerekli sayıya ulaşan infaz: öldürür.
+        expect(
+          deathblowLethal(
+            hpBefore: 60,
+            done: 2,
+            required: required,
+            execThreshold: exec,
+          ),
+          isTrue,
+        );
+        // Düşük HP'de (eşik altı) ilk infaz bile öldürür.
+        expect(
+          deathblowLethal(
+            hpBefore: 25,
+            done: 1,
+            required: required,
+            execThreshold: exec,
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('segment silindiğinde HP bir sonraki faz eşiğine düşer', () {
       // >50 → 50 (faz 0→1), >25 → 25 (faz 1→2), altı → 1.

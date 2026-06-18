@@ -28,7 +28,9 @@ import 'sprite_strip.dart';
 import 'theme.dart';
 
 const Color _kAmber = Color(0xFFE0A82E);
-const Color _kThrust = Color(0xFF9B5DE5); // mikiri/thrust telegrafı (kırmızıdan ayrı)
+const Color _kThrust = Color(
+  0xFF9B5DE5,
+); // mikiri/thrust telegrafı (kırmızıdan ayrı)
 
 enum BossState {
   idle,
@@ -61,12 +63,24 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   double _postureIdle = 0; // son denge hasarından bu yana (regen gecikmesi)
   static const double postureRegen = 8; // /s
   // Denge kırılınca boss bu kadar açık kalır = DEATHBLOW (infaz) penceresi.
-  // Oyuncunun "İNFAZ F" işaretini görüp tek tuşla infaz etmesine yetecek kadar
-  // geniş; basmazsa boss toparlanır (Sekiro deathblow penceresi hissi) (06).
+  // Oyuncunun F ile birkaç hafif kesik veya G ile ağır infaz seçmesine yetecek
+  // kadar geniş; süre dolarsa boss toparlanır (Sekiro deathblow penceresi hissi).
   static const double postureBreakDur = 1.6;
+  // G infazı hasarı ve faz/ölüm sonucu, ağır saldırı temas hesabında değil,
+  // kılıcın saplandığı gecikmiş impact anında bağlanır. Faz geçişi başlasa bile
+  // boss, oyuncunun ağır saldırısının kalan active+recover süresinde hurt kalır.
+  static const double phaseTransitionDeathblowHurtHold =
+      Player.heavyAtkActive + Player.heavyAtkRecover;
+  // G infazının kesilme sesi, hasarın bağlandığı ilk active anında değil,
+  // ağır kılıç çekişi biraz ilerledikten sonra duyulur.
+  static const double heavyDeathblowSfxDelay = Player.heavyAtkActive + 0.08;
 
   double _timer = 0;
   bool _justEntered = true;
+  double _phaseTransitionHurtHold = 0;
+  double _queuedDeathblowImpactDelay = -1;
+  int _queuedDeathblowHpBefore = 0;
+  bool _queuedDeathblowHeavy = false;
 
   int storedCombo = 0;
 
@@ -113,9 +127,8 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   static const double testGuardGap = 0.34;
 
   // --- OYUNCU SALDIRI HASARI (tek saldırı) ---
-  // Not: denge kırıkken (staggered) artık HP hasarı YOK; o pencere DEATHBLOW
-  // (infaz) ile çözülür (bkz. _performDeathblow, 06).
   static const int attackHpOpen = 14; // kırmızıyı dodge sonrası açıkken
+  static const int attackHpStaggeredLight = 15; // denge kırıkken F kesikleri
   static const int attackPostureChip = 8; // boss açık değilken (riskli poke)
 
   // --- ADAPTASYON: oyuncu alışkanlık EMA'ları (0..1) ---
@@ -189,6 +202,10 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _adaptedThisCombo = false;
     _playerWasStunned = false;
     _feintBaitedFollowUp = false;
+    _phaseTransitionHurtHold = 0;
+    _queuedDeathblowImpactDelay = -1;
+    _queuedDeathblowHpBefore = 0;
+    _queuedDeathblowHeavy = false;
     _pending = false;
     _pendingGrace = 0;
     _pendingBeat = null;
@@ -206,7 +223,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   // TEST: ölümsüzlük için can ~0'a inerse tabanda tut, ölme.
   double _testRegenAcc = 0;
 
-  void die() {
+  void die({bool playHit = true}) {
     if (!game.actionSystem.bossCanDie) return;
     if (dying) return;
     dying = true;
@@ -217,7 +234,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _pendingBeat = null;
     _pendingProjectile = null;
     state = BossState.idle;
-    Sfx.hit();
+    if (playHit) Sfx.hit();
   }
 
   @override
@@ -283,6 +300,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _parryHabit = (_parryHabit - _parryHabit * dt * 0.22).clamp(0, 1);
     _dodgeHabit = (_dodgeHabit - _dodgeHabit * dt * 0.22).clamp(0, 1);
     _attackHabit = (_attackHabit - _attackHabit * dt * 0.22).clamp(0, 1);
+    _tickQueuedDeathblowImpact(dt);
     if (_followUpTimer > 0) {
       _followUpTimer -= dt;
       if (_followUpTimer <= 0) _followUpGuard = null;
@@ -330,6 +348,28 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
     if (game.actionSystem.lockBossToBaseX) position.x = _basePos.x;
     position.y = _basePos.y;
+  }
+
+  void _queueDeathblowImpact({
+    required double delay,
+    required int hpBefore,
+    required bool heavy,
+  }) {
+    _queuedDeathblowImpactDelay = delay.clamp(0, 999).toDouble();
+    _queuedDeathblowHpBefore = hpBefore;
+    _queuedDeathblowHeavy = heavy;
+  }
+
+  void _tickQueuedDeathblowImpact(double dt) {
+    if (_queuedDeathblowImpactDelay < 0) return;
+    _queuedDeathblowImpactDelay -= dt;
+    if (_queuedDeathblowImpactDelay > 0) return;
+    final hpBefore = _queuedDeathblowHpBefore;
+    final heavy = _queuedDeathblowHeavy;
+    _queuedDeathblowImpactDelay = -1;
+    _queuedDeathblowHpBefore = 0;
+    _queuedDeathblowHeavy = false;
+    _resolveDeathblowImpact(hpBefore: hpBefore, heavy: heavy);
   }
 
   void _registerHabit({
@@ -428,6 +468,11 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         // Kısa, DOKUNULMAZ staging: boss saldırmaz, hasar almaz. Süre dolunca
         // baskıya döner (08).
         position.x = _basePos.x;
+        if (_phaseTransitionHurtHold > 0) {
+          _phaseTransitionHurtHold = (_phaseTransitionHurtHold - dt)
+              .clamp(0, 999)
+              .toDouble();
+        }
         if (_timer <= 0) {
           posture = maxPosture.toDouble();
           _beatIndex = -1;
@@ -655,37 +700,76 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     return false;
   }
 
-  void _enterPhaseTransition() {
+  void _enterPhaseTransition({double hurtHold = 0, bool playSfx = true}) {
     _clearPending();
     _beatIndex = -1;
     _activeCombo = null;
     _guardCounter = false;
+    _phaseTransitionHurtHold = hurtHold;
     posture = maxPosture.toDouble();
     position.x = _basePos.x;
     // Sinematik: kükreme + orta sarsıntı + kısa slow-mo + uyarı yazısı.
     final label = phase >= 2 ? 'III. FAZ' : 'II. FAZ';
     game.add(ComboText(_topCenter, label));
     game.spawnPostureBreak(_topCenter, color: _kThrust, scale: 1.2);
-    game.spawnVignette(color: const Color(0xFF6A3DD0), maxLife: 0.7, peakAlpha: 70);
-    Sfx.phaseShift();
+    game.spawnVignette(
+      color: const Color(0xFF6A3DD0),
+      maxLife: 0.7,
+      peakAlpha: 70,
+    );
+    if (playSfx) Sfx.phaseShift();
     game.requestShake(8, 0.5);
     game.requestSlowmo(0.45, 0.5);
-    _enter(BossState.phaseTransition, game.actionSystem.phaseTransitionDuration);
+    _enter(
+      BossState.phaseTransition,
+      game.actionSystem.phaseTransitionDuration,
+    );
   }
 
   // -------------------------------------------------------- DEATHBLOW (06)
-  // Denge kırıkken (staggered) yapılan saldırı normal HP yerine İNFAZ tetikler:
-  // slow-mo + kırmızı vinyet + güçlü ses + büyük sarsıntı. Düşük HP'de veya son
-  // segmentte öldürür; aksi halde segment siler → faz geçişi sahnesi gelir.
+  void _performStaggerLightHit() {
+    if (dying) return;
+    final hpBefore = health;
+    takeDamage(attackHpStaggeredLight);
+    final dealt = hpBefore - health;
+    if (dealt <= 0) {
+      Sfx.whiff();
+      game.spawnPopup(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500);
+      return;
+    }
+    game.metrics.bossDamageTaken += dealt;
+    Sfx.hit();
+    game.requestHitstop(0.07);
+    _hurtT = 0.18;
+    game.add(ComboText(_topCenter, 'KESİK'));
+    game.spawnPopup(_topCenter + Vector2(0, 30), '-$dealt', fontSize: 19);
+    if (health <= 0 && game.actionSystem.bossCanDie) die(playHit: false);
+  }
+
+  // Denge kırıkken (staggered) G/ağır saldırı İNFAZ tetikler: slow-mo + kırmızı
+  // vinyet + güçlü ses + büyük sarsıntı. Düşük HP'de veya son segmentte öldürür;
+  // aksi halde segment siler → faz geçişi sahnesi gelir.
   void _performDeathblow(PlayerAttackType type, {bool finisher = false}) {
     if (dying) return;
-    deathblowsDone++;
+    if (_queuedDeathblowImpactDelay >= 0) return;
     final int hpBefore = health;
 
-    // Sinematik doruk anı. Ağır/finisher infaz biraz daha şiddetli sarsar.
     final bool heavy = type == PlayerAttackType.heavy || finisher;
+    final delay = heavy ? heavyDeathblowSfxDelay : 0.0;
+    _timer = max(_timer, delay + 0.05);
+    _queueDeathblowImpact(delay: delay, hpBefore: hpBefore, heavy: heavy);
+  }
+
+  void _resolveDeathblowImpact({required int hpBefore, required bool heavy}) {
+    if (dying) return;
+    deathblowsDone++;
+
     game.add(ComboText(_topCenter, heavy ? 'İNFAZ!' : 'İNFAZ'));
-    game.spawnPostureBreak(_topCenter, color: kBarRed, scale: heavy ? 1.9 : 1.7);
+    game.spawnPostureBreak(
+      _topCenter,
+      color: kBarRed,
+      scale: heavy ? 1.9 : 1.7,
+    );
     game.spawnVignette();
     Sfx.deathblow();
     game.requestHitstop(0.16);
@@ -702,7 +786,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (lethal && game.actionSystem.bossCanDie) {
       takeDamage(100); // tabana indir → ölüm sekansı
       game.metrics.bossDamageTaken += hpBefore;
-      die();
+      die(playHit: false);
       return;
     }
 
@@ -715,7 +799,10 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _hurtT = 0.3;
     if (game.actionSystem.bossPhaseStaging) {
       _lastPhase = phase;
-      _enterPhaseTransition();
+      _enterPhaseTransition(
+        hurtHold: phaseTransitionDeathblowHurtHold,
+        playSfx: false,
+      );
     } else {
       _beatIndex = -1;
       _activeCombo = null;
@@ -851,7 +938,13 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       _comboChainBroken = true;
       Sfx.whiff();
       game.spawnSpark(_topCenter, _kAmber);
-      game.spawnPopup(_topCenter, 'TUZAK!', fontSize: 16, color: _kAmber, rise: 26);
+      game.spawnPopup(
+        _topCenter,
+        'TUZAK!',
+        fontSize: 16,
+        color: _kAmber,
+        rise: 26,
+      );
     } else {
       game.spawnPopup(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500);
     }
@@ -935,8 +1028,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   // Perfect parry (pencerenin ilk dilimi) late'den ölçülebilir biçimde daha
   // ödüllü: ekstra posture + tam hitstop + parlak spark + "ŞING" (03).
   void _parrySuccess(Beat beat, Projectile? proj) {
-    final perfect =
-        game.player.classifyParry() == ParryQuality.perfect;
+    final perfect = game.player.classifyParry() == ParryQuality.perfect;
     perfect ? Sfx.parryPerfect() : Sfx.parryLate();
     game.player.onParrySuccess();
     game.metrics.parrySuccesses++;
@@ -1064,8 +1156,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     // Açılış YALNIZ committed/kırmızı/thrust beat'lerde: dodge bunların doğru
     // cevabı. Normal saldırının asıl ödül aracı YÖNLÜ PARRY'dir (posture +
     // karşı vuruş); dodge onları açmaz, yoksa parry'nin değeri düşer.
-    final opens =
-        beat.punishOnDodge || beat.defense == DefenseProfile.thrust;
+    final opens = beat.punishOnDodge || beat.defense == DefenseProfile.thrust;
     // Perfect dodge HER durumda slow-mo flourish verir (his ödülü).
     if (perfect) {
       game.requestHitstop(0.12);
@@ -1120,7 +1211,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       !dying && (state == BossState.offBalance || state == BossState.staggered);
 
   // OYUNCU SALDIRISI temas etti (game.onPlayerAttackContact menzili doğrular).
-  // staggered → büyük HP; offBalance → HP; açık değilse → posture chip (riskli).
+  // staggered → F çoklu küçük HP, G infaz; offBalance → HP; kapalıysa posture chip.
   void receivePlayerAttack(
     PlayerAttackType type, {
     int comboStep = 0,
@@ -1160,8 +1251,11 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       Sfx.whiff();
       game.spawnPopup(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500);
     } else if (state == BossState.staggered) {
-      // Denge kırık: normal HP hasarı DEĞİL, özel İNFAZ akışı (06).
-      _performDeathblow(type, finisher: finisher);
+      if (type == PlayerAttackType.heavy) {
+        _performDeathblow(type, finisher: finisher);
+      } else {
+        _performStaggerLightHit();
+      }
     } else if (state == BossState.offBalance) {
       final hp = ((attackHpOpen + (game.player.hasTempo ? 4 : 0)) * comboMult)
           .round();
@@ -1337,6 +1431,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       case BossState.staggered:
         return _sprites.loop('hurt', _t, 0.12);
       case BossState.phaseTransition:
+        if (_phaseTransitionHurtHold > 0) {
+          return _sprites.loop('hurt', _t, 0.12);
+        }
         // Dirilme/poz alma: savunma duruşunu tut (kısa staging).
         return _sprites.frames('defend').last;
       case BossState.windup:
@@ -1453,8 +1550,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
   void _renderOpenMarker(Canvas canvas) {
     if (!isOpen) return;
-    // Denge kırık → DEATHBLOW (güçlü, kırmızı "İNFAZ"); dodge sonrası açık →
-    // normal yeşil "VUR" marker'ı. İkisi görsel olarak net ayrışır (06).
+    // Denge kırık → F çoklu kesik + G infaz; dodge sonrası açık → normal "VUR".
     final bool deathblow = state == BossState.staggered;
     final pulse = 0.5 + 0.5 * sin(_t * (deathblow ? 22 : 16));
     final infl = (deathblow ? 7 : 5) + pulse * (deathblow ? 7 : 5);
@@ -1469,11 +1565,11 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         ..style = PaintingStyle.stroke
         ..strokeWidth = deathblow ? 4 : 3,
     );
-    final String label = deathblow ? 'İNFAZ  F' : 'VUR  F';
+    final String label = deathblow ? 'F:15  G:İNFAZ' : 'VUR  F';
     final tp = TextPaint(
       style: TextStyle(
         color: deathblow ? kBarRed : kBarGreen,
-        fontSize: deathblow ? 18 : 16,
+        fontSize: deathblow ? 15 : 16,
         fontWeight: FontWeight.w900,
         letterSpacing: 2,
       ),
@@ -1490,8 +1586,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     canvas.drawRRect(
       rr,
       Paint()
-        ..color = (deathblow ? kBarRed : kBarGreen)
-            .withAlpha((150 + 105 * pulse).toInt())
+        ..color = (deathblow ? kBarRed : kBarGreen).withAlpha(
+          (150 + 105 * pulse).toInt(),
+        )
         ..style = PaintingStyle.stroke
         ..strokeWidth = deathblow ? 3 : 2.5,
     );

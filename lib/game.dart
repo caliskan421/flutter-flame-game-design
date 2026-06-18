@@ -37,6 +37,18 @@ enum TestAttackMode { combo, attack1, attack2, attack3, defend }
 
 enum PlayerAttackType { light, heavy }
 
+bool testAttackModeUsesScenarioRules(TestAttackMode attackMode) {
+  switch (attackMode) {
+    case TestAttackMode.attack1:
+    case TestAttackMode.attack2:
+    case TestAttackMode.attack3:
+    case TestAttackMode.combo:
+      return true;
+    case TestAttackMode.defend:
+      return false;
+  }
+}
+
 // ============================================================================
 //  OYUN
 // ============================================================================
@@ -329,7 +341,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   void _chooseTestAttackNow(TestAttackMode attackMode) {
     testAttackMode = attackMode;
     selectedChar = _testDefFor(attackMode);
-    _setTestRealMatch(attackMode == TestAttackMode.combo);
+    _setTestRealMatch(testAttackModeUsesScenarioRules(attackMode));
     final old = boss;
     if (old != null) old.removeFromParent();
     final b = Boss(selectedChar!);
@@ -700,7 +712,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     Color color = const Color(0xFFC0271E),
     double maxLife = 0.6,
     int peakAlpha = 92,
-  }) => add(RedVignetteFx(color: color, maxLife: maxLife, peakAlpha: peakAlpha));
+  }) =>
+      add(RedVignetteFx(color: color, maxLife: maxLife, peakAlpha: peakAlpha));
 
   void spawnPopup(
     Vector2 pos,

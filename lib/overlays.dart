@@ -126,7 +126,7 @@ class TestSelectOverlay extends StatelessWidget {
                 const SizedBox(width: 18),
                 const Expanded(
                   child: _Body(
-                    'Samuray ve Şövalye I yakın mesafede kalır. Sistem kombo gerçek maç gibi kalıcı can ve sonuç ekranı kullanır.',
+                    'Samuray ve Şövalye I yakın mesafede kalır. Tekli saldırılar tekrar eder; ALT/ÜST/DEF ve HİKAYE gerçek senaryo kurallarını kullanır.',
                   ),
                 ),
               ],
