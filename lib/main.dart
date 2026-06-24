@@ -25,6 +25,7 @@ Future<void> main() async {
         game: game,
         overlayBuilderMap: {
           'testSelect': (ctx, g) => TestSelectOverlay(g),
+          'bossSelect': (ctx, g) => BossSelectOverlay(g),
           'testPanel': (ctx, g) => TestPanelOverlay(g),
           'combatIntro': (ctx, g) => CombatIntroOverlay(g),
           'controls': (ctx, g) => ControlsOverlay(g),

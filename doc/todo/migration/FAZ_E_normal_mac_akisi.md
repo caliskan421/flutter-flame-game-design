@@ -1,6 +1,6 @@
 # FAZ E — Normal Maç Akışı (gerçek/ölümlü mod)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti — NormalActionSystem gerçek maça bağlandı; boss seçim ekranı + startNormalMatch + getter-tabanlı win/loss + retry; test sandbox birebir korundu. analyze temiz, 119 test yeşil.
 > **Bağımlılık:** **Faz A + B bitmiş olmalı.** C/D ile paralel gidebilir.
 > **Tür:** Yeni davranış — ilk gerçek (ölümlü) maç. Test sandbox AYNEN korunur.
 > **Referans:** `doc/architecture.md` §13 (Faz E), §2.3 (NormalActionSystem "hiçbir akış kullanmıyor"), §14 (test ≠ normal).

@@ -27,6 +27,8 @@ import 'characters.dart';
 import 'core/event_bus.dart';
 import 'core/time_fx.dart';
 import 'domain/combat_metrics.dart';
+import 'domain/game_session.dart';
+import 'normal_action_system.dart';
 import 'fx.dart';
 import 'presentation/combat_presenter.dart';
 import 'hud.dart';
@@ -67,6 +69,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   TestAttackMode testAttackMode = TestAttackMode.attack1;
   CharacterDef? selectedChar;
   bool get movementMechanicsMode => testAttackMode == TestAttackMode.movement;
+
+  // Normal (ölümlü) maç akışının saf durumu — seçilen boss + sonuç (Faz E).
+  // game.dart bunu OKUR/YAZAR; GameSession Flame'e dokunmayan saf domain'dir.
+  final GameSession session = GameSession();
 
   // Test arenası açık mı? (ölümsüzlük + sabit yakın mesafe + yerinde döngü)
   bool get testMode => actionSystem.isTest;
@@ -502,8 +508,54 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     overlays.remove('won');
     overlays.remove('lost');
     overlays.remove('testPanel');
+    overlays.remove('bossSelect');
     overlays.add('testSelect');
   }
+
+  // ==========================================================================
+  //  NORMAL (ölümlü) MAÇ AKIŞI — Faz E
+  // --------------------------------------------------------------------------
+  //  Test arenası (sandbox) AYNEN kalır; normal modun TEK girişi buradadır ve
+  //  `actionSystem`'i set eden tek-yer kuralını korur (mod seçimi → set).
+  // ==========================================================================
+
+  // Mod seçimi: rakip (boss) seçim ekranını aç.
+  void openBossSelect() {
+    overlays.remove('testSelect');
+    overlays.remove('testPanel');
+    overlays.add('bossSelect');
+  }
+
+  // Boss seçim ekranından menüye (test/eğitim seçimi) dön.
+  void closeBossSelect() {
+    overlays.remove('bossSelect');
+    overlays.add('testSelect');
+  }
+
+  // NORMAL MAÇ: seçilen boss'a karşı gerçek (ölümlü) dövüşü başlat.
+  // NormalActionSystem zaten playerCanDie/bossCanDie=true, lockBossToBaseX=false
+  // verir; sandbox bayrakları (ölümsüzlük/yerinde döngü) bu yolda KAPALIDIR.
+  void startNormalMatch(CharacterDef bossDef) {
+    session.selectBoss(bossDef.id);
+    // Eski test durumunu temizle: movement modu sızmasın, sandbox flag'i kalksın.
+    testAttackMode = TestAttackMode.attack1;
+    selectedChar = bossDef;
+    actionSystem = const NormalActionSystem();
+    player.setMovementTrainingEnabled(false);
+    _clearMovementInput();
+    final old = boss;
+    if (old != null) old.removeFromParent();
+    final b = Boss(bossDef);
+    boss = b;
+    add(b);
+    b.place(_bossBasePos());
+    overlays.remove('testSelect');
+    overlays.remove('bossSelect');
+    overlays.remove('testPanel');
+    beginMatch();
+  }
+
+  bool get normalMatchMode => !testMode && selectedChar != null;
 
   // --- MAÇI BAŞLAT ---
   void beginMatch() {
@@ -522,6 +574,10 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   void restart() {
     overlays.remove('won');
     overlays.remove('lost');
+    if (normalMatchMode) {
+      startNormalMatch(selectedChar!); // aynı boss'a karşı yeniden
+      return;
+    }
     if (movementMechanicsMode) {
       startMovementMechanics();
       return;
@@ -844,19 +900,29 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
     if (phase == GamePhase.playing && boss != null) {
       final b = boss!;
-      if (player.health <= 0) {
+      // Eşikler HARD-CODE değil: hangi modda kimin ölebildiği ve min can
+      // actionSystem getter'larından okunur. Test sandbox'ta playerCanDie/
+      // bossCanDie=false olduğundan hiçbir dal tetiklenmez (ölümsüzlük korunur);
+      // normal modda (NormalActionSystem) HP minHealth'e inince sonuç gelir.
+      final playerDead =
+          actionSystem.playerCanDie && player.health <= actionSystem.minPlayerHealth;
+      final bossDead =
+          actionSystem.bossCanDie && b.health <= actionSystem.minBossHealth;
+      if (playerDead) {
         // takeHit zaten ölüm sekansını (saplanma → kılıç düşürme) başlattı;
         // ölüm animasyonu/sesi bitince yenilgi ekranı.
         if (player.deathDone) {
           phase = GamePhase.lost;
+          if (normalMatchMode) session.recordResult(MatchResult.lost);
           overlays.remove('testPanel');
           overlays.remove('controls');
           overlays.add('lost');
         }
-      } else if (b.health <= 0) {
+      } else if (bossDead) {
         b.die(); // ölüm animasyonunu başlat (idempotent)
         if (b.deathDone) {
           phase = GamePhase.won;
+          if (normalMatchMode) session.recordResult(MatchResult.won);
           overlays.remove('testPanel');
           overlays.remove('controls');
           overlays.add('won');
