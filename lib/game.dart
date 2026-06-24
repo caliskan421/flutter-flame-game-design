@@ -24,6 +24,8 @@ import 'action_system.dart';
 import 'audio.dart';
 import 'boss.dart';
 import 'characters.dart';
+import 'core/time_fx.dart';
+import 'domain/combat_metrics.dart';
 import 'fx.dart';
 import 'hud.dart';
 import 'input_settings.dart';
@@ -83,16 +85,9 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // saldırı ıskalar (whiff) — neutral'da bedava vuruşu engeller.
   static const double attackRange = 150;
 
-  // Hitstop: temas anında oyunu kısa süre "donuk" hissettiren zaman ölçeği.
-  double _hitstop = 0;
-  // Slow-mo: hitstop'tan AYRI, daha uzun ve daha hafif zaman ölçeği yolu
-  // (deathblow / faz geçişi sineması). Hitstop varken o önceliklidir (11).
-  double _slowmo = 0;
-  double _slowmoScale = 0.3;
-  // Screen-shake: sönümlenen küçük kamera sarsıntısı (heavy/posture/deathblow).
-  double _shakeT = 0;
-  double _shakeDur = 0;
-  double _shakeAmp = 0;
+  // Zaman/FX durumu (hitstop + slow-mo + screen-shake). game.dart yalnız
+  // delege eder; mantık core/time_fx.dart'ta (Faz A).
+  final TimeFx timeFx = TimeFx();
 
   // Geliştirici combat overlay'i (` / 0 tuşu ile aç-kapa).
   bool debug = false;
@@ -397,9 +392,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.setMovementTrainingEnabled(true);
     _clearMovementInput();
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
     phase = GamePhase.playing;
     overlays.remove('testSelect');
     overlays.remove('won');
@@ -423,9 +416,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.reset();
     b.reset();
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
     overlays.remove('testSelect');
     overlays.remove('testPanel');
     overlays.remove('won');
@@ -444,9 +435,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.reset();
     boss?.reset();
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
   }
 
   void completeCombatIntro() {
@@ -468,9 +457,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       player.setMovementTrainingEnabled(true);
       _clearMovementInput();
       metrics.reset();
-      _hitstop = 0;
-      _slowmo = 0;
-      _shakeT = 0;
+      timeFx.reset();
       return;
     }
     boss?.reset();
@@ -479,9 +466,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       boss?.enterTestGuard();
     }
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
   }
 
   void changeTestAttack(TestAttackMode attackMode) {
@@ -503,9 +488,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     setIntroPresentation(false);
     player.reset();
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
     overlays.remove('won');
     overlays.remove('lost');
     overlays.remove('testPanel');
@@ -519,9 +502,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     _clearMovementInput();
     boss?.reset();
     metrics.reset();
-    _hitstop = 0;
-    _slowmo = 0;
-    _shakeT = 0;
+    timeFx.reset();
     phase = GamePhase.playing;
     overlays.remove('won');
     overlays.remove('lost');
@@ -803,36 +784,17 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     player.setHorizontalMove(0, running: false);
   }
 
-  // --- HITSTOP & FX YARDIMCILARI ---
-  void requestHitstop(double d) {
-    if (d > _hitstop) _hitstop = d;
-  }
+  // --- HITSTOP & FX YARDIMCILARI (timeFx'e delege) ---
+  void requestHitstop(double d) => timeFx.requestHitstop(d);
 
   // Deathblow/faz sineması: hitstop'u bozmadan daha uzun, daha hafif yavaşlatma.
-  void requestSlowmo(double duration, double scale) {
-    if (duration > _slowmo) {
-      _slowmo = duration;
-      _slowmoScale = scale;
-    }
-  }
+  void requestSlowmo(double duration, double scale) =>
+      timeFx.requestSlowmo(duration, scale);
 
   // Hafif kamera sarsıntısı (genlik px, süre s). Daha güçlü istek öncekini ezer.
-  void requestShake(double amplitude, double duration) {
-    final amp = amplitude * actionSystem.screenShakeScale;
-    if (amp <= 0 || duration <= 0) return;
-    if (amp >= _shakeAmp || _shakeT <= 0) {
-      _shakeAmp = amp;
-      _shakeDur = duration;
-      _shakeT = duration;
-    }
-  }
-
-  Offset _shakeOffset() {
-    if (_shakeT <= 0 || _shakeDur <= 0) return Offset.zero;
-    final t = (_shakeT / _shakeDur).clamp(0.0, 1.0);
-    final mag = _shakeAmp * t; // doğrusal sönüm
-    return Offset(sin(_shakeT * 92) * mag, cos(_shakeT * 67) * mag * 0.6);
-  }
+  // Genlik burada screenShakeScale ile ölçeklenir; eşik mantığı timeFx'te.
+  void requestShake(double amplitude, double duration) =>
+      timeFx.requestShake(amplitude * actionSystem.screenShakeScale, duration);
 
   void spawnSpark(Vector2 pos, Color color) => add(Spark(pos, color));
 
@@ -865,15 +827,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     // Zaman ölçeği: hitstop (kısa sert donma) önceliklidir; yoksa slow-mo
     // (deathblow/faz, daha uzun/hafif). İkisi de gerçek dt ile azalır, sahne
     // ölçeklenmiş dt ile güncellenir. Shake zamanlayıcısı da gerçek dt ile akar.
-    double scale = 1.0;
-    if (_hitstop > 0) {
-      _hitstop = (_hitstop - dt).clamp(0, 999).toDouble();
-      scale = 0.06;
-    } else if (_slowmo > 0) {
-      _slowmo = (_slowmo - dt).clamp(0, 999).toDouble();
-      scale = _slowmoScale;
-    }
-    if (_shakeT > 0) _shakeT = (_shakeT - dt).clamp(0, 999).toDouble();
+    final scale = timeFx.update(dt);
     super.update(dt * scale);
 
     if (phase == GamePhase.playing) metrics.fightDuration += dt;
@@ -905,7 +859,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // sarsıntıda ekstra save/restore maliyeti yoktur (11).
   @override
   void render(Canvas canvas) {
-    final off = _shakeOffset();
+    final off = timeFx.shakeOffset();
     if (off == Offset.zero) {
       super.render(canvas);
       return;
@@ -949,49 +903,6 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
       }
     }
     return KeyEventResult.handled;
-  }
-}
-
-// ============================================================================
-//  COMBAT METRICS  —  tuning/debug için canlı sayaçlar (Faz 6)
-// ----------------------------------------------------------------------------
-//  Bir maçın hangi aksiyonla kazanıldığını/kaybedildiğini ve baskın stratejiyi
-//  gözlemlemeye yarar. Debug overlay (` / 0) bunları gösterir.
-// ============================================================================
-class CombatMetrics {
-  double fightDuration = 0;
-  int playerDamageTaken = 0;
-  int bossDamageTaken = 0;
-  int bossPostureBreaks = 0;
-  int parryAttempts = 0;
-  int parrySuccesses = 0;
-  int dodgeAttempts = 0;
-  int dodgeSuccesses = 0;
-  int attackWhiffs = 0;
-  int lightHits = 0;
-  int heavyHits = 0;
-  int staminaEmptyDenials = 0;
-  // --- BOSS AI & ADAPTASYON (09) ---
-  int feintBaited = 0; // oyuncu aldatmaya kandı (erken savundu)
-  int greedPunished = 0; // boss açık değilken saldıran oyuncu cezalandı
-  int guardBreakPunished = 0; // postürü kırılan oyuncu garanti punish yedi
-
-  void reset() {
-    fightDuration = 0;
-    playerDamageTaken = 0;
-    bossDamageTaken = 0;
-    bossPostureBreaks = 0;
-    parryAttempts = 0;
-    parrySuccesses = 0;
-    dodgeAttempts = 0;
-    dodgeSuccesses = 0;
-    attackWhiffs = 0;
-    lightHits = 0;
-    heavyHits = 0;
-    staminaEmptyDenials = 0;
-    feintBaited = 0;
-    greedPunished = 0;
-    guardBreakPunished = 0;
   }
 }
 

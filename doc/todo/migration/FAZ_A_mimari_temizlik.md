@@ -1,6 +1,6 @@
 # FAZ A — Mimari Temizlik (davranış DEĞİŞMEZ)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti
 > **Bağımlılık:** Yok (ilk faz).
 > **Tür:** Saf refactor — oyuncunun gördüğü hiçbir şey değişmez.
 > **Referans:** `doc/architecture.md` §13 (Faz A), §4 (D1/D2 darboğazları), §10 (klasör), `00_INDEX.md` §3 (global değişmezler).

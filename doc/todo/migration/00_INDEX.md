@@ -116,7 +116,7 @@ lib/
 
 | Faz | Durum | Not |
 |---|---|---|
-| A | ⬜ Başlamadı | |
+| A | ✅ Bitti | CombatMetrics→domain, TimeFx→core, GameSession iskeleti, intro cue'ları→content. analyze temiz, testler yeşil. |
 | B | ⬜ Başlamadı | A'ya bağlı |
 | C | ⬜ Başlamadı | B'ye bağlı |
 | D | ⬜ Başlamadı | B'ye bağlı (C ile paralel) |

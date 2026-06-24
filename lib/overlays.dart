@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import 'audio.dart';
 import 'characters.dart';
+import 'content/intro_sequence.dart';
 import 'game.dart';
 import 'input_settings.dart';
 import 'theme.dart';
@@ -295,16 +296,6 @@ class _MovementMechanicsHelp extends StatelessWidget {
   }
 }
 
-enum _IntroSide { left, right }
-
-class _IntroCue {
-  final String image;
-  final String audio;
-  final _IntroSide side;
-
-  const _IntroCue(this.image, this.audio, this.side);
-}
-
 // ============================================================================
 //  COMBAT GİRİŞ SUNUMU  —  siyah perde + portre/diyalog zaman çizelgesi
 // ============================================================================
@@ -318,22 +309,15 @@ class CombatIntroOverlay extends StatefulWidget {
 
 class _CombatIntroOverlayState extends State<CombatIntroOverlay>
     with TickerProviderStateMixin {
-  static const _bloodOath = 'backgroung/Blood Oath March (1).mp3';
-  static const _cathedral = 'backgroung/Cathedral of Ash (2).mp3';
-  static const _cues = [
-    _IntroCue('ş1.png', 'ş1.mp3', _IntroSide.right),
-    _IntroCue('s1.png', 's1.mp3', _IntroSide.left),
-    _IntroCue('ş2.png', 'ş2.mp3', _IntroSide.right),
-    _IntroCue('s2.png', 's2.mp3', _IntroSide.left),
-    _IntroCue('ş3.png', 'ş3.mp3', _IntroSide.right),
-    _IntroCue('s3.png', 's3.mp3', _IntroSide.left),
-  ];
+  // Cue/müzik verisi content/intro_sequence.dart'ta (Faz A); overlay yalnız
+  // render eder.
+  static const IntroSequenceDef _sequence = kCombatIntroSequence;
 
   double _blackOpacity = 0;
   bool _curtainActive = false;
   double _curtainOpen = 1;
-  _IntroCue? _current;
-  _IntroCue? _previous;
+  DialogueCueDef? _current;
+  DialogueCueDef? _previous;
   double _currentOpacity = 0;
   double _previousOpacity = 0;
   double _progressOpacity = 0;
@@ -345,7 +329,7 @@ class _CombatIntroOverlayState extends State<CombatIntroOverlay>
   }
 
   Future<void> _run() async {
-    await Sfx.startBackgroundMusic(file: _bloodOath);
+    await Sfx.startBackgroundMusic(file: _sequence.openingMusic);
     await _animate(
       const Duration(seconds: 2),
       (t) => _blackOpacity = t,
@@ -366,7 +350,7 @@ class _CombatIntroOverlayState extends State<CombatIntroOverlay>
     if (!mounted) return;
     setState(() => _curtainActive = false);
 
-    for (final cue in _cues) {
+    for (final cue in _sequence.cues) {
       await _showCue(cue);
       await Sfx.duckBackgroundMusic();
       await Sfx.playIntroDialogue(cue.audio);
@@ -393,7 +377,7 @@ class _CombatIntroOverlayState extends State<CombatIntroOverlay>
       _previousOpacity = 0;
       _progressOpacity = 1;
     });
-    await Sfx.startBackgroundMusic(file: _cathedral, volume: 0.34);
+    await Sfx.startBackgroundMusic(file: _sequence.closingMusic, volume: 0.34);
     await _pause(const Duration(milliseconds: 1600));
     await _animate(
       const Duration(milliseconds: 400),
@@ -417,7 +401,7 @@ class _CombatIntroOverlayState extends State<CombatIntroOverlay>
     widget.game.completeCombatIntro();
   }
 
-  Future<void> _showCue(_IntroCue cue) async {
+  Future<void> _showCue(DialogueCueDef cue) async {
     if (!mounted) return;
     setState(() {
       _previous = _current;
@@ -510,7 +494,7 @@ class _CombatIntroOverlayState extends State<CombatIntroOverlay>
 }
 
 class _IntroPortrait extends StatelessWidget {
-  final _IntroCue cue;
+  final DialogueCueDef cue;
   final double opacity;
 
   const _IntroPortrait({required this.cue, required this.opacity});
@@ -524,8 +508,8 @@ class _IntroPortrait extends StatelessWidget {
     final portraitSize = rawSize.clamp(280.0, 560.0).toDouble();
 
     return Positioned(
-      left: cue.side == _IntroSide.left ? sideInset : null,
-      right: cue.side == _IntroSide.right ? sideInset : null,
+      left: cue.side == IntroSide.left ? sideInset : null,
+      right: cue.side == IntroSide.right ? sideInset : null,
       bottom: bottomInset,
       width: portraitSize,
       height: portraitSize,
