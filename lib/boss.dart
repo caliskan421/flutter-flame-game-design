@@ -18,9 +18,9 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-import 'audio.dart';
 import 'characters.dart';
-import 'fx.dart';
+import 'combat/rules/combat_event.dart';
+import 'combat/rules/combat_resolver.dart';
 import 'game.dart';
 import 'player.dart';
 import 'projectile.dart';
@@ -234,7 +234,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _pendingBeat = null;
     _pendingProjectile = null;
     state = BossState.idle;
-    if (playHit) Sfx.hit();
+    if (playHit) game.bus.emit(const SfxRequested(SfxCue.hit));
   }
 
   @override
@@ -275,14 +275,14 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (dying) return;
     posture = 0;
     _clearPending();
-    game.metrics.bossPostureBreaks++;
-    game.add(ComboText(_topCenter, 'DENGE KIRILDI'));
+    game.bus.emit(const PostureBroken());
+    game.bus.emit(ComboTextRequested(_topCenter, 'DENGE KIRILDI'));
     // Daha büyük, ayrı renkli şok halkası + ayrışmış posture-break sesi + orta
     // şiddette ekran sarsıntısı: artık bu bir DEATHBLOW fırsatı (06/11).
-    game.spawnPostureBreak(_topCenter, color: _kAmber, scale: 1.4);
-    Sfx.postureBreak();
-    game.requestHitstop(0.13);
-    game.requestShake(7, 0.3);
+    game.bus.emit(PostureBreakFxRequested(_topCenter, color: _kAmber, scale: 1.4));
+    game.bus.emit(const SfxRequested(SfxCue.postureBreak));
+    game.bus.emit(const HitstopRequested(0.13));
+    game.bus.emit(ShakeRequested(7, 0.3));
     _enter(BossState.staggered, postureBreakDur);
   }
 
@@ -310,7 +310,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       _deathT += dt;
       if (!_swordDropPlayed && _deathT >= _deathDur * 0.55) {
         _swordDropPlayed = true;
-        Sfx.swordDrop();
+        game.bus.emit(const SfxRequested(SfxCue.swordDrop));
       }
       if (_deathT >= _deathDur) deathDone = true;
       return;
@@ -624,13 +624,13 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         _nonFeintTotal > 0 &&
         _parriedThisCombo >= _nonFeintTotal) {
       final bonus = (_activeCombo ?? def.pattern).staggerBonus;
-      game.add(ComboText(_topCenter, '×$_parriedThisCombo  TAM PARRY'));
-      game.spawnPopup(
+      game.bus.emit(ComboTextRequested(_topCenter, '×$_parriedThisCombo  TAM PARRY'));
+      game.bus.emit(PopupRequested(
         _topCenter + Vector2(0, 34),
         '-$bonus DENGE',
         fontSize: 18,
         color: kBarBlue,
-      );
+      ));
       applyPostureDamage(bonus);
       if (state == BossState.staggered) return; // kırıldı → stagger sürüyor
       _hurtT = 0.3;
@@ -710,16 +710,17 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     position.x = _basePos.x;
     // Sinematik: kükreme + orta sarsıntı + kısa slow-mo + uyarı yazısı.
     final label = phase >= 2 ? 'III. FAZ' : 'II. FAZ';
-    game.add(ComboText(_topCenter, label));
-    game.spawnPostureBreak(_topCenter, color: _kThrust, scale: 1.2);
-    game.spawnVignette(
-      color: const Color(0xFF6A3DD0),
+    game.bus.emit(ComboTextRequested(_topCenter, label));
+    game.bus.emit(PostureBreakFxRequested(_topCenter, color: _kThrust, scale: 1.2));
+    game.bus.emit(const VignetteRequested(
+      color: Color(0xFF6A3DD0),
       maxLife: 0.7,
       peakAlpha: 70,
-    );
-    if (playSfx) Sfx.phaseShift();
-    game.requestShake(8, 0.5);
-    game.requestSlowmo(0.45, 0.5);
+    ));
+    if (playSfx) game.bus.emit(const SfxRequested(SfxCue.phaseShift));
+    game.bus.emit(ShakeRequested(8, 0.5));
+    game.bus.emit(const SlowmoRequested(0.45, 0.5));
+    game.bus.emit(PhaseChanged(phase));
     _enter(
       BossState.phaseTransition,
       game.actionSystem.phaseTransitionDuration,
@@ -733,16 +734,20 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     takeDamage(attackHpStaggeredLight);
     final dealt = hpBefore - health;
     if (dealt <= 0) {
-      Sfx.whiff();
-      game.spawnPopup(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500);
+      game.bus.emit(const SfxRequested(SfxCue.whiff));
+      game.bus.emit(
+        PopupRequested(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500),
+      );
       return;
     }
-    game.metrics.bossDamageTaken += dealt;
-    Sfx.hit();
-    game.requestHitstop(0.07);
+    game.bus.emit(DamageApplied(dealt, toBoss: true));
+    game.bus.emit(const SfxRequested(SfxCue.hit));
+    game.bus.emit(const HitstopRequested(0.07));
     _hurtT = 0.18;
-    game.add(ComboText(_topCenter, 'KESİK'));
-    game.spawnPopup(_topCenter + Vector2(0, 30), '-$dealt', fontSize: 19);
+    game.bus.emit(ComboTextRequested(_topCenter, 'KESİK'));
+    game.bus.emit(
+      PopupRequested(_topCenter + Vector2(0, 30), '-$dealt', fontSize: 19),
+    );
     if (health <= 0 && game.actionSystem.bossCanDie) die(playHit: false);
   }
 
@@ -764,28 +769,33 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (dying) return;
     deathblowsDone++;
 
-    game.add(ComboText(_topCenter, heavy ? 'İNFAZ!' : 'İNFAZ'));
-    game.spawnPostureBreak(
-      _topCenter,
-      color: kBarRed,
-      scale: heavy ? 1.9 : 1.7,
+    game.bus.emit(ComboTextRequested(_topCenter, heavy ? 'İNFAZ!' : 'İNFAZ'));
+    game.bus.emit(
+      PostureBreakFxRequested(
+        _topCenter,
+        color: kBarRed,
+        scale: heavy ? 1.9 : 1.7,
+      ),
     );
-    game.spawnVignette();
-    Sfx.deathblow();
-    game.requestHitstop(0.16);
-    game.requestSlowmo(
-      game.actionSystem.deathblowSlowmoDuration,
-      game.actionSystem.deathblowSlowmoScale,
+    game.bus.emit(const VignetteRequested());
+    game.bus.emit(const SfxRequested(SfxCue.deathblow));
+    game.bus.emit(const HitstopRequested(0.16));
+    game.bus.emit(
+      SlowmoRequested(
+        game.actionSystem.deathblowSlowmoDuration,
+        game.actionSystem.deathblowSlowmoScale,
+      ),
     );
-    game.requestShake(heavy ? 14 : 12, 0.5);
+    game.bus.emit(ShakeRequested(heavy ? 14 : 12, 0.5));
 
     final lethal =
         deathblowsDone >= deathblowsRequired ||
         health <= game.actionSystem.bossExecuteThresholdHp;
+    game.bus.emit(Deathblow(lethal: lethal));
 
     if (lethal && game.actionSystem.bossCanDie) {
       takeDamage(100); // tabana indir → ölüm sekansı
-      game.metrics.bossDamageTaken += hpBefore;
+      game.bus.emit(DamageApplied(hpBefore, toBoss: true));
       die(playHit: false);
       return;
     }
@@ -794,7 +804,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     // sonra dokunulmaz faz geçişi sahnesi. Sandbox'ta (staging kapalı) baskıya döner.
     final next = health > 50 ? 50 : (health > 25 ? 25 : 1);
     if (health > next) takeDamage(health - next);
-    game.metrics.bossDamageTaken += (hpBefore - health);
+    game.bus.emit(DamageApplied(hpBefore - health, toBoss: true));
     posture = maxPosture.toDouble();
     _hurtT = 0.3;
     if (game.actionSystem.bossPhaseStaging) {
@@ -856,61 +866,34 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
   void _resolveContact(Beat beat, Projectile? proj) {
     if (dying) return;
-    // ALDATMA: gerçek vuruş YOK. Önceden/erken savunan oyuncu tuzağa düşer (09).
-    if (beat.kind == BeatKind.feint || beat.defense == DefenseProfile.feint) {
-      _resolveFeint(beat, proj);
-      return;
-    }
     final p = game.player;
-    // Gerçek i-frame: dodge'un dokunulmazlık penceresindeyse HER saldırı geçersiz
-    // (tracking dahil). Sıkı bir pencere; usta zamanlamayı ödüllendirir (04).
-    // i-frame her şeyi geçer AMA tracking (saplama/takip) hariç: takip saldırısı
-    // i-frame'i delip seni bulur → yalnız SPACE (parry) ile karşılanır.
-    if (_iFrameBeats(beat)) {
-      _dodgeSuccess(beat, proj);
-      return;
-    }
-    // Parry penceresi: beat penceresi ile oyuncunun (spam ile daralmış olabilen)
-    // penceresinin küçüğü. Böylece spam decay başarıyı gerçekten daraltır (03).
-    final effWindow = min(beat.preWindow, p.effectiveParryWindow);
-    final pressedParry = Player.parrySucceeds(p.sinceParry, effWindow);
-    final didParry = pressedParry && _guardMatches(beat);
-    // Dodge başarısı GERÇEK i-frame'e bağlı (yukarıda isInvulnerable ile çözüldü).
-    // triedDodge yalnız FEEDBACK içindir: dodge'a bastı ama i-frame'i ıskaladı →
-    // başarı yok, greed cezalanır (04).
-    final triedDodge = p.sinceDodge <= beat.dodgePre;
-
-    if (beat.defense == DefenseProfile.guardBreak) {
-      if (pressedParry) {
-        _wrongTool(beat, proj, 'PARRY OLMAZ!');
-      } else {
-        _beginPending(beat, proj);
-      }
-    } else if (beat.defense == DefenseProfile.thrust) {
-      // MİKİRİ: delici saldırı. Doğru cevap dodge (i-frame); parry cezalanır.
-      if (pressedParry) {
-        _wrongTool(beat, proj, 'MİKİRİ! KAÇ');
-      } else {
-        _beginPending(beat, proj);
-      }
-    } else if (beat.defense == DefenseProfile.tracking) {
-      if (didParry) {
+    // Araç+pencere KARARI saf CombatResolver'da (Flame'siz, test edilebilir).
+    // Boss yalnız oyuncu/beat durumunu okur ve kararı uygular.
+    final isFeint =
+        beat.kind == BeatKind.feint || beat.defense == DefenseProfile.feint;
+    final decision = CombatResolver.resolveContact(
+      defense: beat.defense,
+      guardDirection: beat.guardDirection,
+      isFeint: isFeint,
+      playerInvulnerable: p.isInvulnerable,
+      guardMatches: _guardMatches(beat),
+      sinceParry: p.sinceParry,
+      sinceDodge: p.sinceDodge,
+      beatPreWindow: beat.preWindow,
+      effectiveParryWindow: p.effectiveParryWindow,
+      dodgePre: beat.dodgePre,
+    );
+    switch (decision.action) {
+      case ContactAction.feint:
+        _resolveFeint(beat, proj);
+      case ContactAction.dodgeSuccess:
+        _dodgeSuccess(beat, proj);
+      case ContactAction.parrySuccess:
         _parrySuccess(beat, proj);
-      } else if (pressedParry) {
-        _wrongTool(beat, proj, 'YANLIŞ YÖN!');
-      } else if (triedDodge) {
-        _wrongTool(beat, proj, 'KAÇILMAZ!');
-      } else {
+      case ContactAction.wrongTool:
+        _wrongTool(beat, proj, decision.wrongToolLabel!);
+      case ContactAction.beginPending:
         _beginPending(beat, proj);
-      }
-    } else {
-      if (didParry) {
-        _parrySuccess(beat, proj);
-      } else if (pressedParry && beat.guardDirection != GuardDirection.any) {
-        _wrongTool(beat, proj, 'YANLIŞ YÖN!');
-      } else {
-        _beginPending(beat, proj);
-      }
     }
   }
 
@@ -932,21 +915,25 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (baited) {
       p.baitPunish(game.actionSystem.feintBaitLock);
       _feintBaitedFollowUp = true; // sıradaki gerçek beat hızlanıp punish etsin
-      game.metrics.feintBaited++;
+      game.bus.emit(const MetricRecorded(MetricKind.feintBaited));
       // Erken savunma eğilimi → bu oyuncuya daha çok tuzak (parry habit artar).
       _registerHabit(parry: true);
       _comboChainBroken = true;
-      Sfx.whiff();
-      game.spawnSpark(_topCenter, _kAmber);
-      game.spawnPopup(
-        _topCenter,
-        'TUZAK!',
-        fontSize: 16,
-        color: _kAmber,
-        rise: 26,
+      game.bus.emit(const SfxRequested(SfxCue.whiff));
+      game.bus.emit(SparkRequested(_topCenter, _kAmber));
+      game.bus.emit(
+        PopupRequested(
+          _topCenter,
+          'TUZAK!',
+          fontSize: 16,
+          color: _kAmber,
+          rise: 26,
+        ),
       );
     } else {
-      game.spawnPopup(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500);
+      game.bus.emit(
+        PopupRequested(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500),
+      );
     }
   }
 
@@ -1016,11 +1003,13 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     const hp = 10;
     takeDamage(hp);
     game.player.playParryFollowUp(input);
-    game.metrics.bossDamageTaken += hp;
-    Sfx.hit();
-    game.requestHitstop(0.07);
+    game.bus.emit(DamageApplied(hp, toBoss: true));
+    game.bus.emit(const SfxRequested(SfxCue.hit));
+    game.bus.emit(const HitstopRequested(0.07));
     _hurtT = 0.18;
-    game.spawnPopup(_topCenter + Vector2(0, 30), '-$hp', fontSize: 19);
+    game.bus.emit(
+      PopupRequested(_topCenter + Vector2(0, 30), '-$hp', fontSize: 19),
+    );
     return true;
   }
 
@@ -1029,18 +1018,22 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   // ödüllü: ekstra posture + tam hitstop + parlak spark + "ŞING" (03).
   void _parrySuccess(Beat beat, Projectile? proj) {
     final perfect = game.player.classifyParry() == ParryQuality.perfect;
-    perfect ? Sfx.parryPerfect() : Sfx.parryLate();
+    game.bus.emit(
+      SfxRequested(perfect ? SfxCue.parryPerfect : SfxCue.parryLate),
+    );
     game.player.onParrySuccess();
-    game.metrics.parrySuccesses++;
+    game.bus.emit(ParrySucceeded(perfect: perfect));
     _registerHabit(parry: true);
     _hurtT = 0.30;
     proj?.deflect();
-    game.requestHitstop(perfect ? 0.09 : 0.03);
-    game.spawnSpark(_topCenter, perfect ? _kAmber : kBarBlue);
-    if (perfect) game.spawnSpark(_topCenter, kBarBlue);
+    game.bus.emit(HitstopRequested(perfect ? 0.09 : 0.03));
+    game.bus.emit(SparkRequested(_topCenter, perfect ? _kAmber : kBarBlue));
+    if (perfect) game.bus.emit(SparkRequested(_topCenter, kBarBlue));
 
     if (beat.kind == BeatKind.feint) {
-      game.spawnPopup(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500);
+      game.bus.emit(
+        PopupRequested(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500),
+      );
       return;
     }
 
@@ -1053,18 +1046,22 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         : beat.postureDamage;
     applyPostureDamage(dmg);
     if (perfect) {
-      game.spawnPopup(
-        _topCenter + Vector2(0, -2),
-        'MÜKEMMEL',
-        fontSize: 14,
-        color: _kAmber,
+      game.bus.emit(
+        PopupRequested(
+          _topCenter + Vector2(0, -2),
+          'MÜKEMMEL',
+          fontSize: 14,
+          color: _kAmber,
+        ),
       );
     }
-    game.spawnPopup(
-      _topCenter + Vector2(0, perfect ? 16 : 0),
-      '-$dmg DENGE',
-      fontSize: 15,
-      color: kBarBlue,
+    game.bus.emit(
+      PopupRequested(
+        _topCenter + Vector2(0, perfect ? 16 : 0),
+        '-$dmg DENGE',
+        fontSize: 15,
+        color: kBarBlue,
+      ),
     );
   }
 
@@ -1081,7 +1078,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       GuardDirection.high => '↑ KARŞI',
       GuardDirection.any => 'SPACE KARŞI',
     };
-    game.spawnPopup(_topCenter + Vector2(0, -24), label, fontSize: 13);
+    game.bus.emit(
+      PopupRequested(_topCenter + Vector2(0, -24), label, fontSize: 13),
+    );
   }
 
   void _applyHit(Beat beat, Projectile? proj) {
@@ -1100,13 +1099,18 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       proj?.deflect();
       p.takeBlockedHit(beat);
       _comboChainBroken = true;
-      game.spawnSpark(_topCenter, _kAmber);
-      game.spawnPopup(
-        Vector2(game.player.position.x, game.player.position.y - size.y * 0.9),
-        beat.defense == DefenseProfile.guardBreak ? 'BLOK DELİNDİ' : 'BLOK',
-        fontSize: 13,
-        color: _kAmber,
-        rise: 24,
+      game.bus.emit(SparkRequested(_topCenter, _kAmber));
+      game.bus.emit(
+        PopupRequested(
+          Vector2(
+            game.player.position.x,
+            game.player.position.y - size.y * 0.9,
+          ),
+          beat.defense == DefenseProfile.guardBreak ? 'BLOK DELİNDİ' : 'BLOK',
+          fontSize: 13,
+          color: _kAmber,
+          rise: 24,
+        ),
       );
       return;
     }
@@ -1120,17 +1124,22 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       reason = pressed ? 'ZAMANLAMA!' : 'SAVUNMADIN!';
     }
     game.player.takeHit(beat.damage, -1);
-    game.spawnPopup(
-      Vector2(game.player.position.x, game.player.position.y - size.y * 1.05),
-      reason,
-      fontSize: 14,
-      color: kBarRed,
-      rise: 30,
+    game.bus.emit(DamageApplied(beat.damage, toBoss: false));
+    game.bus.emit(
+      PopupRequested(
+        Vector2(game.player.position.x, game.player.position.y - size.y * 1.05),
+        reason,
+        fontSize: 14,
+        color: kBarRed,
+        rise: 30,
+      ),
     );
-    game.spawnPopup(
-      Vector2(game.player.position.x, game.player.position.y - size.y * 0.8),
-      '-${beat.damage}',
-      fontSize: beat.damage >= 20 ? 23 : 17,
+    game.bus.emit(
+      PopupRequested(
+        Vector2(game.player.position.x, game.player.position.y - size.y * 0.8),
+        '-${beat.damage}',
+        fontSize: beat.damage >= 20 ? 23 : 17,
+      ),
     );
     _comboChainBroken = true; // vuruş yedin: tam-parry bonusu iptal
   }
@@ -1140,16 +1149,18 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   // yalnız kurtarır (04).
   void _dodgeSuccess(Beat beat, Projectile? proj) {
     final perfect = game.player.isPerfectDodge;
-    Sfx.dodge();
+    game.bus.emit(const SfxRequested(SfxCue.dodge));
     game.player.onDodgeSuccess();
-    game.metrics.dodgeSuccesses++;
+    game.bus.emit(DodgeSucceeded(perfect: perfect));
     _registerHabit(dodge: true);
     _recentDodges++;
     proj?.deflect();
     _comboChainBroken = true; // parry zinciri kırıldı (bonus yok)
 
     if (beat.kind == BeatKind.feint) {
-      game.spawnPopup(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500);
+      game.bus.emit(
+        PopupRequested(_topCenter, 'ALDATMA', fontSize: 14, color: kGray500),
+      );
       return;
     }
 
@@ -1159,28 +1170,32 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     final opens = beat.punishOnDodge || beat.defense == DefenseProfile.thrust;
     // Perfect dodge HER durumda slow-mo flourish verir (his ödülü).
     if (perfect) {
-      game.requestHitstop(0.12);
-      game.spawnSpark(_topCenter, _kAmber);
+      game.bus.emit(const HitstopRequested(0.12));
+      game.bus.emit(SparkRequested(_topCenter, _kAmber));
     }
     if (opens) {
-      game.spawnPopup(
-        _topCenter,
-        perfect ? 'TAM SIYRILMA!' : 'AÇIK!',
-        fontSize: perfect ? 16 : 15,
-        color: perfect ? _kAmber : kGray700,
-        rise: 28,
+      game.bus.emit(
+        PopupRequested(
+          _topCenter,
+          perfect ? 'TAM SIYRILMA!' : 'AÇIK!',
+          fontSize: perfect ? 16 : 15,
+          color: perfect ? _kAmber : kGray700,
+          rise: 28,
+        ),
       );
       // Perfect dodge daha uzun punish penceresi açar.
       _enter(BossState.offBalance, perfect ? punishWindow * 1.4 : punishWindow);
     } else {
       // Normal saldırıyı sıyırdın: hasarsız kurtuluş (+perfect'te slow-mo) ama
       // boss komboya DEVAM eder. Açmak istiyorsan yönlü parry'le.
-      game.spawnPopup(
-        _topCenter,
-        perfect ? 'TAM SIYRILMA' : 'SIYRILDIN',
-        fontSize: perfect ? 14 : 13,
-        color: perfect ? _kAmber : kGray500,
-        rise: 24,
+      game.bus.emit(
+        PopupRequested(
+          _topCenter,
+          perfect ? 'TAM SIYRILMA' : 'SIYRILDIN',
+          fontSize: perfect ? 14 : 13,
+          color: perfect ? _kAmber : kGray500,
+          rise: 24,
+        ),
       );
     }
   }
@@ -1190,18 +1205,25 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     proj?.deflect();
     final chip = (beat.damage * 0.35).round();
     game.player.getStunned(0.4, chip: chip);
-    game.spawnPopup(
-      Vector2(game.player.position.x, game.player.position.y - size.y * 0.8),
-      label,
-      fontSize: 14,
-      color: kBarRed,
-      rise: 30,
+    game.bus.emit(
+      PopupRequested(
+        Vector2(game.player.position.x, game.player.position.y - size.y * 0.8),
+        label,
+        fontSize: 14,
+        color: kBarRed,
+        rise: 30,
+      ),
     );
     if (chip > 0) {
-      game.spawnPopup(
-        Vector2(game.player.position.x, game.player.position.y - size.y * 0.5),
-        '-$chip',
-        fontSize: 16,
+      game.bus.emit(
+        PopupRequested(
+          Vector2(
+            game.player.position.x,
+            game.player.position.y - size.y * 0.5,
+          ),
+          '-$chip',
+          fontSize: 16,
+        ),
       );
     }
     _comboChainBroken = true;
@@ -1220,8 +1242,10 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (dying) return;
     // Faz geçişi sahnesi DOKUNULMAZ: oyuncu haksız hasar veremez (08).
     if (state == BossState.phaseTransition) {
-      Sfx.whiff();
-      game.spawnPopup(_topCenter, 'DOKUNULMAZ', fontSize: 13, color: kGray500);
+      game.bus.emit(const SfxRequested(SfxCue.whiff));
+      game.bus.emit(
+        PopupRequested(_topCenter, 'DOKUNULMAZ', fontSize: 13, color: kGray500),
+      );
       return;
     }
     _registerHabit(attack: true);
@@ -1237,19 +1261,25 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     } else if (state == BossState.idle && game.actionSystem.isTest) {
       final hp = type == PlayerAttackType.light ? 10 : 0;
       if (hp <= 0) {
-        Sfx.whiff();
-        game.spawnPopup(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500);
+        game.bus.emit(const SfxRequested(SfxCue.whiff));
+        game.bus.emit(
+          PopupRequested(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500),
+        );
         return;
       }
       takeDamage(hp);
-      game.metrics.bossDamageTaken += hp;
-      Sfx.hit();
-      game.requestHitstop(0.06);
+      game.bus.emit(DamageApplied(hp, toBoss: true));
+      game.bus.emit(const SfxRequested(SfxCue.hit));
+      game.bus.emit(const HitstopRequested(0.06));
       _hurtT = 0.16;
-      game.spawnPopup(_topCenter + Vector2(0, 30), '-$hp', fontSize: 18);
+      game.bus.emit(
+        PopupRequested(_topCenter + Vector2(0, 30), '-$hp', fontSize: 18),
+      );
     } else if (game.testAttackMode == TestAttackMode.defend) {
-      Sfx.whiff();
-      game.spawnPopup(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500);
+      game.bus.emit(const SfxRequested(SfxCue.whiff));
+      game.bus.emit(
+        PopupRequested(_topCenter, 'ETKİ YOK', fontSize: 13, color: kGray500),
+      );
     } else if (state == BossState.staggered) {
       if (type == PlayerAttackType.heavy) {
         _performDeathblow(type, finisher: finisher);
@@ -1260,12 +1290,22 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       final hp = ((attackHpOpen + (game.player.hasTempo ? 4 : 0)) * comboMult)
           .round();
       takeDamage(hp);
-      game.metrics.bossDamageTaken += hp;
-      type == PlayerAttackType.heavy ? Sfx.heavyHit() : Sfx.hit();
-      game.requestHitstop(type == PlayerAttackType.heavy ? 0.11 : 0.08);
-      if (type == PlayerAttackType.heavy) game.requestShake(4, 0.16);
-      game.add(ComboText(_topCenter, finisher ? 'FİNİSHER' : 'CEZA'));
-      game.spawnPopup(_topCenter + Vector2(0, 30), '-$hp', fontSize: 20);
+      game.bus.emit(DamageApplied(hp, toBoss: true));
+      game.bus.emit(
+        SfxRequested(
+          type == PlayerAttackType.heavy ? SfxCue.heavyHit : SfxCue.hit,
+        ),
+      );
+      game.bus.emit(
+        HitstopRequested(type == PlayerAttackType.heavy ? 0.11 : 0.08),
+      );
+      if (type == PlayerAttackType.heavy) {
+        game.bus.emit(ShakeRequested(4, 0.16));
+      }
+      game.bus.emit(ComboTextRequested(_topCenter, finisher ? 'FİNİSHER' : 'CEZA'));
+      game.bus.emit(
+        PopupRequested(_topCenter + Vector2(0, 30), '-$hp', fontSize: 20),
+      );
       _decidePressure();
     } else {
       // Boss açık değil. GREED: oyuncu açık olmadığı halde saldırıyor. Boss bunu
@@ -1273,29 +1313,35 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       // → F spam'i artık risksiz değil (09). Aksi halde yalnız riskli posture chip.
       if (_maybeGreedPunish()) return;
       applyPostureDamage(attackPostureChip);
-      Sfx.parry();
-      game.spawnSpark(_topCenter, _kAmber);
-      game.spawnPopup(
-        _topCenter,
-        '-$attackPostureChip DENGE',
-        fontSize: 13,
-        color: kBarBlue,
+      game.bus.emit(const SfxRequested(SfxCue.parry));
+      game.bus.emit(SparkRequested(_topCenter, _kAmber));
+      game.bus.emit(
+        PopupRequested(
+          _topCenter,
+          '-$attackPostureChip DENGE',
+          fontSize: 13,
+          color: kBarBlue,
+        ),
       );
     }
   }
 
   void _shieldLightBlock() {
     game.player.takePostureDamage(22);
-    Sfx.block();
-    game.requestHitstop(0.06);
-    game.spawnSpark(_topCenter, _kAmber);
-    game.spawnPopup(_topCenter, 'KALKAN', fontSize: 15, color: _kAmber);
-    game.spawnPopup(
-      Vector2(game.player.position.x, game.player.position.y - size.y * 0.72),
-      'DENGE -22',
-      fontSize: 13,
-      color: kBarRed,
-      rise: 24,
+    game.bus.emit(const SfxRequested(SfxCue.block));
+    game.bus.emit(const HitstopRequested(0.06));
+    game.bus.emit(SparkRequested(_topCenter, _kAmber));
+    game.bus.emit(
+      PopupRequested(_topCenter, 'KALKAN', fontSize: 15, color: _kAmber),
+    );
+    game.bus.emit(
+      PopupRequested(
+        Vector2(game.player.position.x, game.player.position.y - size.y * 0.72),
+        'DENGE -22',
+        fontSize: 13,
+        color: kBarRed,
+        rise: 24,
+      ),
     );
   }
 
@@ -1307,9 +1353,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     if (state == BossState.phaseTransition) return false;
     final chance = game.actionSystem.greedPunishChance * (1 + phase * 0.25);
     if (_rng.nextDouble() > chance) return false;
-    game.metrics.greedPunished++;
-    game.add(ComboText(_topCenter, 'AÇGÖZLÜ!'));
-    Sfx.whiff();
+    game.bus.emit(const MetricRecorded(MetricKind.greedPunished));
+    game.bus.emit(ComboTextRequested(_topCenter, 'AÇGÖZLÜ!'));
+    game.bus.emit(const SfxRequested(SfxCue.whiff));
     _startCounterBeat(windup: 0.18 - phase * 0.02, damage: 14);
     return true;
   }
@@ -1323,8 +1369,8 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         state == BossState.offBalance) {
       return;
     }
-    game.metrics.guardBreakPunished++;
-    game.add(ComboText(_topCenter, 'SAVUNMA KIRIK!'));
+    game.bus.emit(const MetricRecorded(MetricKind.guardBreakPunished));
+    game.bus.emit(ComboTextRequested(_topCenter, 'SAVUNMA KIRIK!'));
     _startCounterBeat(windup: 0.22, damage: 16);
   }
 
@@ -1369,16 +1415,20 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _beatOverrides.clear();
     _comboChainBroken = true;
     game.player.breakPosture();
-    Sfx.block();
-    game.requestHitstop(0.09);
-    game.spawnSpark(_topCenter, _kAmber);
-    game.spawnPopup(_topCenter, 'AĞIR HATA!', fontSize: 16, color: _kAmber);
-    game.spawnPopup(
-      Vector2(game.player.position.x, game.player.position.y - size.y * 0.72),
-      'DENGE SIFIR',
-      fontSize: 14,
-      color: kBarRed,
-      rise: 28,
+    game.bus.emit(const SfxRequested(SfxCue.block));
+    game.bus.emit(const HitstopRequested(0.09));
+    game.bus.emit(SparkRequested(_topCenter, _kAmber));
+    game.bus.emit(
+      PopupRequested(_topCenter, 'AĞIR HATA!', fontSize: 16, color: _kAmber),
+    );
+    game.bus.emit(
+      PopupRequested(
+        Vector2(game.player.position.x, game.player.position.y - size.y * 0.72),
+        'DENGE SIFIR',
+        fontSize: 14,
+        color: kBarRed,
+        rise: 28,
+      ),
     );
 
     final source = def.pattern.beats[2];

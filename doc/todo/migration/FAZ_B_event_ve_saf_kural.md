@@ -1,6 +1,6 @@
 # FAZ B — Event Yolu + Saf Kural (CombatResolver ilk dilim)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti — EventBus + CombatEvent + CombatPresenter; boss.dart'taki tüm Sfx/spawnPopup/metrics/request* çağrıları event yayımına çevrildi (combat karar yolunda 0 doğrudan çağrı). CombatResolver parry/dodge araç+pencere kararını saf veriyor. analyze temiz, 73 test yeşil (event_bus + combat_resolver + combat_presenter yeni testleri dahil).
 > **Bağımlılık:** **Faz A bitmiş olmalı** (TimeFx/metrics ayrı).
 > **Tür:** Refactor + altyapı — davranış DEĞİŞMEZ; kural saf test edilebilir hale gelir.
 > **Referans:** `doc/architecture.md` §3 (vuruş yaşam döngüsü), §6.4–6.5 (CombatResolver/CombatEvent), §4 (D3/D4), §16 (ilke 6).

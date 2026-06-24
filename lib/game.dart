@@ -24,9 +24,11 @@ import 'action_system.dart';
 import 'audio.dart';
 import 'boss.dart';
 import 'characters.dart';
+import 'core/event_bus.dart';
 import 'core/time_fx.dart';
 import 'domain/combat_metrics.dart';
 import 'fx.dart';
+import 'presentation/combat_presenter.dart';
 import 'hud.dart';
 import 'input_settings.dart';
 import 'player.dart';
@@ -89,6 +91,11 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // delege eder; mantık core/time_fx.dart'ta (Faz A).
   final TimeFx timeFx = TimeFx();
 
+  // Combat olay kanalı (Faz B): combat kararı buraya `CombatEvent` yayar,
+  // `CombatPresenter` ses/popup/metrik/slow-mo'ya çevirir (D3/D4).
+  final EventBus bus = EventBus();
+  late final CombatPresenter _combatPresenter;
+
   // Geliştirici combat overlay'i (` / 0 tuşu ile aç-kapa).
   bool debug = false;
   final CombatMetrics metrics = CombatMetrics();
@@ -116,6 +123,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   @override
   Future<void> onLoad() async {
     await controls.loadSavedBindings();
+    // Tüm combat sunumu tek noktadan (presenter) bus üzerinden beslenir.
+    _combatPresenter = CombatPresenter(bus, this);
     player = Player();
     addAll([ArenaBackground(), ArenaFrame(), player, Hud()]);
     _initGamepadInput();
@@ -126,6 +135,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
 
   @override
   void onRemove() {
+    _combatPresenter.dispose();
     _gamepadRefreshTimer?.cancel();
     _gamepadSubscription?.cancel();
     for (final gamepad in _listedGamepads) {
