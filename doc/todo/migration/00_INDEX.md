@@ -118,7 +118,7 @@ lib/
 |---|---|---|
 | A | ✅ Bitti | CombatMetrics→domain, TimeFx→core, GameSession iskeleti, intro cue'ları→content. analyze temiz, testler yeşil. |
 | B | ✅ Bitti | EventBus+CombatEvent+CombatPresenter; boss.dart event yayar (Sfx/popup/metrics/request* → bus); CombatResolver saf temas kararı. analyze temiz, testler yeşil. |
-| C | ⬜ Başlamadı | B'ye bağlı |
+| C | ✅ Bitti | ActionTimeline+PlayerMoveDef; parry/dodge/light/heavy süreleri veriden (tek kaynak k* sabitleri); _atkTotal=timeline.duration, dodgeInvulnerableAt=isIn(iframe). Davranış birebir. analyze temiz, 100 test yeşil. Not: low-parry penceresi ayrı model olarak Faz D'ye bırakıldı. |
 | D | ⬜ Başlamadı | B'ye bağlı (C ile paralel) |
 | E | ⬜ Başlamadı | A+B'ye bağlı |
 | F | ⬜ Başlamadı | B'ye bağlı (C/D sonrası önerilir) |

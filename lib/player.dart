@@ -17,6 +17,8 @@ import 'package:flutter/material.dart';
 
 import 'audio.dart';
 import 'characters.dart';
+import 'combat/data/action_timeline.dart';
+import 'combat/data/move_def.dart';
 import 'game.dart';
 import 'sprite_strip.dart';
 import 'theme.dart';
@@ -58,8 +60,10 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
       stamina < maxStamina * game.actionSystem.lowStaminaFraction;
 
   // --- PARRY (hassas) ---
-  static const double parryWindowDuration = 0.13;
-  static const double lowParryWindowDuration = 0.18;
+  // Süreler `kPlayerParry`/move_def'den (TEK KAYNAK) gelir; bu const'lar
+  // alias'tır (boss.dart + birim testler bunları const olarak okur).
+  static const double parryWindowDuration = kPlayerParryWindow;
+  static const double lowParryWindowDuration = kPlayerLowParryWindow;
   static const double parryCooldownDuration = 0.34;
   double _parryWindow = 0;
   double _parryWindowMax = parryWindowDuration;
@@ -76,7 +80,8 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   ParryQuality lastParryQuality = ParryQuality.perfect;
 
   // --- DODGE (geniş pencere; yalnız kırmızı saldırılarda anlamlı) ---
-  static const double dodgeWindowDuration = 0.20;
+  // Süre/i-frame sınırları `kPlayerDodge`/move_def'den (TEK KAYNAK) gelir.
+  static const double dodgeWindowDuration = kPlayerDodgeDuration;
   static const double dodgeCooldownDuration = 0.42;
   double _dodgeWindow = 0;
   double _dodgeCooldown = 0;
@@ -85,9 +90,9 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   // --- DODGE i-FRAME (04) ---
   // Dodge animasyonunun ortasında gerçek dokunulmazlık aralığı; bu pencerede
   // HER hasar kaynağı (melee/mermi) geçersiz. İlk dilim "perfect" (slow-mo ödülü).
-  static const double dodgeInvulnFrom = 0.02;
-  static const double dodgeInvulnTo = 0.20;
-  static const double perfectDodgeUntil = 0.11;
+  static const double dodgeInvulnFrom = kPlayerDodgeIframeFrom;
+  static const double dodgeInvulnTo = kPlayerDodgeIframeTo;
+  static const double perfectDodgeUntil = kPlayerDodgePerfectUntil;
   bool get isInvulnerable =>
       state == PlayerState.dodge && dodgeInvulnerableAt(_dodgeT);
   // i-frame'in erken (perfect) diliminde miyiz? Boss daha uzun punish + slow-mo verir.
@@ -98,7 +103,7 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   // Dodge başından bu yana geçen süre dokunulmazlık (i-frame) aralığında mı?
   // ARALIK DIŞINDA dodge başlamış olsa bile saldırı isabet eder (greed cezası, 04).
   static bool dodgeInvulnerableAt(double dodgeT) =>
-      dodgeT >= dodgeInvulnFrom && dodgeT <= dodgeInvulnTo;
+      kPlayerDodge.timeline.isIn(CombatWindowKind.iframe, dodgeT);
 
   // Ardışık spam sayacına göre daralan parry penceresi (03). Sayaç arttıkça daralır,
   // bir tabanın altına inmez.
@@ -117,12 +122,14 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
   bool get hasTempo => _tempo > 0;
 
   // --- SALDIRI (tek tip) ---
-  static const double atkWindup = 0.07;
-  static const double atkActive = 0.10;
-  static const double atkRecover = 0.18;
-  static const double heavyAtkWindup = 0.24;
-  static const double heavyAtkActive = 0.12;
-  static const double heavyAtkRecover = 0.42;
+  // Faz fazları `kPlayerLight`/`kPlayerHeavy` timeline'larından (TEK KAYNAK) gelir;
+  // bu const'lar alias'tır (boss.dart + birim testler const olarak okur).
+  static const double atkWindup = kPlayerLightWindup;
+  static const double atkActive = kPlayerLightActive;
+  static const double atkRecover = kPlayerLightRecover;
+  static const double heavyAtkWindup = kPlayerHeavyWindup;
+  static const double heavyAtkActive = kPlayerHeavyActive;
+  static const double heavyAtkRecover = kPlayerHeavyRecover;
   static const double attackCooldownDuration = 0.18;
   double _attackCooldown = 0;
   double _atkT = 0;
@@ -217,13 +224,15 @@ class Player extends PositionComponent with HasGameReference<BossArenaGame> {
       _attackType == PlayerAttackType.light &&
       _atkT >= _atkWindup + _atkActive;
 
+  // Aktif saldırının veri tanımı (light/heavy). Süreler buradaki timeline'dan
+  // okunur; `Player` artık süreyi kendi içinde toplamaz (C3).
+  PlayerMoveDef get _attackMove =>
+      _attackType == PlayerAttackType.heavy ? kPlayerHeavy : kPlayerLight;
   double get _atkWindup =>
       _attackType == PlayerAttackType.heavy ? heavyAtkWindup : atkWindup;
   double get _atkActive =>
       _attackType == PlayerAttackType.heavy ? heavyAtkActive : atkActive;
-  double get _atkRecover =>
-      _attackType == PlayerAttackType.heavy ? heavyAtkRecover : atkRecover;
-  double get _atkTotal => _atkWindup + _atkActive + _atkRecover;
+  double get _atkTotal => _attackMove.timeline.duration;
 
   @override
   Future<void> onLoad() async {

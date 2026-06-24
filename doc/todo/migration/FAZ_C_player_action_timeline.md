@@ -1,6 +1,6 @@
 # FAZ C — Oyuncu Aksiyon Timeline'ı (PlayerMoveDef + ActionTimeline)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti — ActionTimeline + PlayerMoveDef eklendi; Player süreleri veriden okuyor (tek kaynak `k*` sabitleri), `_atkTotal=timeline.duration`, `dodgeInvulnerableAt=isIn(iframe)`. Davranış birebir korundu; analyze temiz, 100 test yeşil. **Sonraki faza not:** low-parry (`kPlayerLowParryWindow`) ayrı `ActionWindow` modeli olarak değil yalnız süre sabiti olarak taşındı → Faz D'de pencereye bağlanabilir.
 > **Bağımlılık:** **Faz B bitmiş olmalı.** **Faz D ile paralel** yürüyebilir (farklı dosyalar).
 > **Tür:** Refactor — davranış DEĞİŞMEZ; oyuncu aksiyonları data-driven olur.
 > **Referans:** `doc/architecture.md` §6.1 (ActionTimeline), §6.3 (PlayerMoveDef), §16 (ilke 4).
