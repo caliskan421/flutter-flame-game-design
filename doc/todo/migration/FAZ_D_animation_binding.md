@@ -1,6 +1,6 @@
 # FAZ D — Animation Binding (mekanik ↔ asset kontratı)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti — AnimationBinding+markerFrames+HitboxSpec; attackFrame binding okur (fallback korunur), knight_1+samuray binding'li, davranış birebir. analyze temiz, 111 test yeşil. D5 (marker→event köprüsü) opsiyonel olarak ertelendi.
 > **Bağımlılık:** **Faz B bitmiş olmalı.** **Faz C ile paralel** (C'nin `ActionTimeline`'ını okur; ayrı dosyalar). C bittiyse daha temiz oturur.
 > **Tür:** Refactor + altyapı — davranış DEĞİŞMEZ; "darbe karesi" bilgisi sanatçı verisi olur.
 > **Referans:** `doc/architecture.md` §7 (tümü), §6.2 (Beat→AnimationBinding), §16 (ilke 3).

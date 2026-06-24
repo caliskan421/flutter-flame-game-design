@@ -23,6 +23,7 @@ import 'combat/rules/combat_event.dart';
 import 'combat/rules/combat_resolver.dart';
 import 'game.dart';
 import 'player.dart';
+import 'presentation/animation_binding.dart';
 import 'projectile.dart';
 import 'sprite_strip.dart';
 import 'theme.dart';
@@ -1492,6 +1493,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
           _timer,
           _beat.windup,
           phase: AttackPhase.windup,
+          binding: resolveAnimationBinding(_beat.animationBindingId),
         );
       case BossState.active:
         if (_hurtT > 0) return _sprites.loop('hurt', _t, 0.08);
@@ -1500,6 +1502,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
           _timer,
           _beat.active,
           phase: AttackPhase.active,
+          binding: resolveAnimationBinding(_beat.animationBindingId),
         );
       case BossState.recover:
         if (_hurtT > 0) return _sprites.loop('hurt', _t, 0.08);
@@ -1508,6 +1511,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
           _timer,
           _beat.recover,
           phase: AttackPhase.recover,
+          binding: resolveAnimationBinding(_beat.animationBindingId),
         );
     }
   }

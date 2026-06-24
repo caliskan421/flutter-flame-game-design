@@ -58,6 +58,10 @@ class Beat {
   final bool mustDefend; // sidebar'da ZORUNLU olarak vurgulanır
   final String? projectileKey; // null değilse => ranged; mermi sheet anahtarı
   final double projectileSpeed; // px/s
+  // Faz D: bu beat'in saldırı sheet'ini mekaniğe bağlayan AnimationBinding id'si
+  // (presentation/animation_binding.dart kaydında çözülür). null → sprite_strip
+  // eski `mid = n/2` davranışına düşer (geriye uyumlu fallback).
+  final String? animationBindingId;
 
   const Beat({
     required this.kind,
@@ -77,6 +81,7 @@ class Beat {
     this.mustDefend = false,
     this.projectileKey,
     this.projectileSpeed = 620,
+    this.animationBindingId,
   });
 
   bool get isRanged => projectileKey != null;
@@ -109,6 +114,7 @@ class Beat {
       mustDefend: mustDefend,
       projectileKey: projectileKey,
       projectileSpeed: projectileSpeed,
+      animationBindingId: animationBindingId,
     );
   }
 
@@ -218,6 +224,7 @@ const List<CharacterDef> kCharacters = [
         Beat(
           kind: BeatKind.meleeLight,
           animKey: 'attack1',
+          animationBindingId: 'knight_1.attack1',
           windup: .34,
           active: .15,
           recover: .22,
@@ -232,6 +239,7 @@ const List<CharacterDef> kCharacters = [
           kind: BeatKind.meleeHeavy,
           defense: DefenseProfile.guardBreak,
           animKey: 'attack2',
+          animationBindingId: 'knight_1.attack2',
           windup: .44,
           active: .15,
           recover: .26,
@@ -245,6 +253,7 @@ const List<CharacterDef> kCharacters = [
         Beat(
           kind: BeatKind.meleeLight,
           animKey: 'attack3',
+          animationBindingId: 'knight_1.attack3',
           windup: .30,
           active: .15,
           recover: .30,

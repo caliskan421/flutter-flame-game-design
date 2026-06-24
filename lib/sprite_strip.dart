@@ -3,10 +3,42 @@ import 'dart:ui' show Image;
 import 'package:flame/components.dart';
 
 import 'characters.dart';
+import 'presentation/animation_binding.dart';
 
 typedef SpriteImageLoader = Future<Image> Function(String path);
 
 enum AttackPhase { windup, active, recover }
+
+/// SAF: faz + ilerleme + (opsiyonel) `contactFrame` pivot'undan kare indeksi.
+///
+/// Mekanik OTORİTE süreyi belirler (çağıran `phase` + `progress` verir); bu
+/// fonksiyon yalnız ASSET'in hangi karesini göstereceğini hesaplar.
+/// [contactFrame] null ise eski davranış (`mid = (n/2).floor()`) BİREBİR korunur
+/// — binding'siz/marker'sız karakterler için FALLBACK budur. contact verildiğinde
+/// pivot ona kayar: windup [0..pivot-1], active = pivot, recover [pivot+1..n-1].
+/// knight_1'de contact == mid olduğundan görsel çıktı değişmez.
+int attackFrameIndex({
+  required int n,
+  required AttackPhase phase,
+  required double progress,
+  int? contactFrame,
+}) {
+  if (n <= 0) return 0;
+  final mid = (n / 2).floor().clamp(0, n - 1);
+  final pivot = (contactFrame ?? mid).clamp(0, n - 1);
+  final p = progress.clamp(0.0, 1.0);
+  switch (phase) {
+    case AttackPhase.windup:
+      final span = pivot;
+      return span <= 0 ? 0 : (p * span).floor().clamp(0, span - 1);
+    case AttackPhase.active:
+      return pivot;
+    case AttackPhase.recover:
+      final start = (pivot + 1).clamp(0, n - 1);
+      final span = n - start;
+      return span <= 0 ? n - 1 : (start + p * span).floor().clamp(start, n - 1);
+  }
+}
 
 class SpriteStripBank {
   SpriteStripBank(this.def);
@@ -69,34 +101,31 @@ class SpriteStripBank {
     return list[i];
   }
 
+  /// Saldırı karesi. [binding] verilirse `markerFrames['contact']` DARBE karesini
+  /// (active fazda gösterilen kare) belirler; yoksa eski `mid = n/2` davranışına
+  /// düşer (geriye uyumlu). Mekanik temas yine `active` penceresinden gelir.
   Sprite attackFrame(
     String key,
     double remaining,
     double duration, {
     required AttackPhase phase,
+    AnimationBinding? binding,
   }) {
     final list = frames(key);
-    final n = list.length;
-    final mid = (n / 2).floor().clamp(0, n - 1);
     final p = (1 - (remaining / duration)).clamp(0.0, 1.0);
-
-    final int idx;
-    switch (phase) {
-      case AttackPhase.windup:
-        final span = mid;
-        idx = span <= 0 ? 0 : (p * span).floor().clamp(0, span - 1);
-        break;
-      case AttackPhase.active:
-        idx = mid;
-        break;
-      case AttackPhase.recover:
-        final start = (mid + 1).clamp(0, n - 1);
-        final span = n - start;
-        idx = span <= 0
-            ? n - 1
-            : (start + p * span).floor().clamp(start, n - 1);
-        break;
-    }
+    // Binding yalnız KENDİ sheet'ine uygulanır (yanlış id → güvenli fallback).
+    final contact = contactFrameFor(binding, key);
+    assert(
+      contact == null || (contact >= 0 && contact < list.length),
+      'AnimationBinding contact=$contact "$key" (${list.length} kare) '
+      'sınırları dışında',
+    );
+    final idx = attackFrameIndex(
+      n: list.length,
+      phase: phase,
+      progress: p,
+      contactFrame: contact,
+    );
     return list[idx];
   }
 }
