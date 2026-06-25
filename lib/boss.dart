@@ -240,7 +240,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _deathT = 0;
     _swordDropPlayed = false;
     if (_basePos != Vector2.zero()) position = _basePos.clone();
-    _enter(BossState.idle, idleTime);
+    // Encounter hikaye modifikatörü (Faz G): sessiz yaklaşma → boss ilk saldırıya
+    // daha geç girer. Varsayılan 0 → normal maç/sandbox değişmez.
+    _enter(BossState.idle, idleTime + game.actionSystem.bossOpeningDelay);
   }
 
   // TEST: ölümsüzlük için can ~0'a inerse tabanda tut, ölme.
@@ -264,7 +266,9 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   void onMount() {
     super.onMount();
     if (_basePos == Vector2.zero()) _basePos = position.clone();
-    _enter(BossState.idle, idleTime);
+    // bossOpeningDelay'i burada da uygula: Flame mount sırası reset'ten SONRA
+    // çalışırsa encounter açılış gecikmesi ezilmesin (varsayılan 0 → değişmez).
+    _enter(BossState.idle, idleTime + game.actionSystem.bossOpeningDelay);
   }
 
   void _enter(BossState s, double t) {

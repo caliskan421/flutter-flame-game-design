@@ -47,8 +47,12 @@ class EncounterRunner {
   EncounterStepDef? get current =>
       (_index >= 0 && _index < def.steps.length) ? def.steps[_index] : null;
 
-  /// Encounter'ı başlat (ilk adıma geç).
+  /// Encounter'ı başlat (ilk adıma geç). Geçici flag'leri (zar sonucu vb.)
+  /// temizler → tekrar oynatma temiz başlar (kalıcı ilerleme flag'leri kalır).
   void start() {
+    for (final f in def.clearFlagsOnStart) {
+      state.clearFlag(f);
+    }
     _index = -1;
     _advance();
   }

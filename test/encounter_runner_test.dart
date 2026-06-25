@@ -138,6 +138,38 @@ void main() {
       expect(host.calls.last, 'reward');
     });
 
+    test("start() geçici flag'leri temizler (tekrar oynatmada sızmaz)", () {
+      const def = EncounterDef(
+        id: 'e',
+        title: 'E',
+        clearFlagsOnStart: ['approached_silently', 'alerted_guard'],
+        steps: [DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')]))],
+      );
+      // Önceki oynatmadan kalan flag.
+      final state = ScenarioState()..setFlag('approached_silently');
+      final runner = EncounterRunner(
+        def: def,
+        state: state,
+        rng: Rng.seeded(1),
+        host: FakeHost(),
+      );
+      runner.start();
+      expect(state.hasFlag('approached_silently'), isFalse);
+    });
+
+    test("kalıcı ilerleme flag'i start()ta temizlenmez", () {
+      const def = EncounterDef(
+        id: 'e',
+        title: 'E',
+        clearFlagsOnStart: ['approached_silently'],
+        steps: [DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')]))],
+      );
+      final state = ScenarioState()..setFlag('boss_knight_1_defeated');
+      EncounterRunner(def: def, state: state, rng: Rng.seeded(1), host: FakeHost())
+          .start();
+      expect(state.hasFlag('boss_knight_1_defeated'), isTrue);
+    });
+
     test('seedli zar deterministik (aynı seed → aynı sonuç)', () {
       DiceResult run(int seed) {
         final state = ScenarioState();

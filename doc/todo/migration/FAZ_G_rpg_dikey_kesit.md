@@ -1,6 +1,6 @@
 # FAZ G — RPG Dikey Kesit (Scenario / Encounter / Dialogue / Choice / Dice)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** ✅ Bitti — Ash Gate encounter'ı uçtan uca oynanabilir. Saf çekirdek 16 birim testiyle; akış EncounterRunner'da (D6 çözüldü); zar yalnız hikayede (`bossOpeningDelay`). analyze temiz, 157 test yeşil. (Save/load Faz H; elle duman testi kullanıcıda.)
 > **Bağımlılık:** **Faz E (gerçek maç akışı) + Faz F (temiz boss) bitmiş olmalı.** Faz B event yolu kullanılır.
 > **Tür:** Yeni özellik — ilk gerçek oyun döngüsü (salt combat prototipinden çıkış).
 > **Referans:** `doc/architecture.md` §8 (tümü), §15 (vertical slice tanımı), §16 (ilke 8,10), §14 (zar önce hikâyede).
@@ -69,14 +69,14 @@ class ScenarioState { final Set<String> flags; final Map<String,int> stats, reso
 
 ## 4. Adım adım görevler
 
-- [ ] **G1 — ScenarioState + GameSession.** `ScenarioState`'i `GameSession`'a koy; `ChangeNotifier` ile değişiklik yayını. Combat bu flag'leri **okuyabilir** ama diyalog node'unu bilmez (§8.4 sınırı).
-- [ ] **G2 — Seedli Rng + DiceService.** `core/rng.dart` tek seedli kaynak; `DiceService.roll(check, rng)` saf. UI yalnız sonucu animasyonla gösterir.
-- [ ] **G3 — Encounter modeli + runner.** `EncounterDef`/`EncounterStepDef`/`EncounterRunner`. Runner adımları sırayla yürütür; `combat` adımında Faz E normal maçına geçer; maç biter bitmez `BossDefeated`/loss event'iyle akışa döner.
-- [ ] **G4 — Diyalog & seçim overlay'leri.** `DialogueNodeDef`/`ChoiceDef`'i render eden overlay'ler; **mantık overlay'de değil** — overlay komut yollar, runner/session uygular (§14, ilke). `CombatIntroOverlay`'in Faz A'da veriye taşınan cue'larıyla aynı desen.
-- [ ] **G5 — Zar check (hikayede).** Bir seçim `DiceCheckDef` tetikler; `1d20 + stat >= DC`. Başarı → bir flag set (`approached_silently`) → combat başlarken boss ilk fazda **daha geç agresifleşir** (boss/`ArenaActionSystem` parametresine ufak modifikatör; parry/dodge oranına dokunma).
-- [ ] **G6 — Combat sonucu → flag/reward.** Maç win → `ScenarioEffect`: `boss_knight_1_defeated` flag + `honor +1` resource; reward adımı anlatısı; sonraki encounter placeholder. Loss → retry/menü (Faz E).
-- [ ] **G7 — Ash Gate verisi.** `content/encounters/ash_gate.dart`: diyalog + 2-3 seçim + 1 zar + Knight 1 combat + reward, §15 akışına birebir.
-- [ ] **G8 — Test + analyze + duman.** DiceService saf test; encounter akışı uçtan uca oynanır; test arena ve normal maç (Faz E) hâlâ ayrı ve sağlam.
+- [x] **G1 — ScenarioState + GameSession.** ✅ `domain/scenario_state.dart` (flags/stats/resources/completedEncounters); `GameSession.scenario` + `setFlag/giveResource/setStat/markEncounterCompleted` notify eder. Combat flag okur (boss `approached_silently`→`bossOpeningDelay`), diyalog node bilmez. Test: scenario_state_test (6).
+- [x] **G2 — Seedli Rng + DiceService.** ✅ `core/rng.dart` (seedlenebilir); `domain/dice_service.dart` saf `roll(check, rng, statBonus)` (1d20+stat>=DC), statBonus çağırandan → DiceService saf. Test: dice_service_test (6).
+- [x] **G3 — Encounter modeli + runner.** ✅ `domain/encounter.dart` (EncounterDef/Step sealed) + `app/flow/encounter_runner.dart`. Runner soyut `EncounterHost` üzerinden komut yollar (Flame'siz, FakeHost ile test); combat adımı→host.startCombat; win→ödül, loss→host.onCombatLost. Test: encounter_runner_test (4).
+- [x] **G4 — Diyalog & seçim overlay'leri.** ✅ overlays.dart'a EncounterDialogue/Choice/Dice/Reward overlay'leri (pixel stil); mantık yok, game'e komut yollar (dialogueAdvance/choicePick/diceAdvance/rewardAdvance). main.dart overlayBuilderMap'e eklendi.
+- [x] **G5 — Zar check (hikayede).** ✅ Seçim stealth statını belirler; DiceCheckStep 1d20+stealth>=12; başarı→`approached_silently`. Combat başlarken `NormalActionSystem(bossOpeningDelay: silent? 2.2:0)`; boss reset'te ilk idle'a eklenir → ilk saldırı gecikir. Parry/dodge math'ine DOKUNULMADI (§14).
+- [x] **G6 — Combat sonucu → flag/reward.** ✅ win→update() köprüsü `onCombatResult(true)`→RewardStep efektleri (`boss_knight_1_defeated` + `honor+1`)→placeholder (menü). loss→`onCombatLost`→EndOverlay; YENİDEN→retryCombat. `BossDefeated` event'i yayılıyor.
+- [x] **G7 — Ash Gate verisi.** ✅ `content/encounters/ash_gate.dart`: 2 satır diyalog + 3 seçim + 1 zar + Knight 1 (knight_1) combat + zafer ödülü, §15 akışına birebir.
+- [x] **G8 — Test + analyze + duman.** ✅ 3 saf test grubu (16 birim) + tüm mevcut testler yeşil (157 toplam); analyze temiz. Test arena + normal maç ayrık ve sağlam (encounterActive=false yolu değişmedi). Elle `flutter run` duman testi kullanıcıda.
 
 ## 5. Kabul kriterleri
 - Ash Gate encounter **uçtan uca oynanabiliyor**: menü → diyalog → seçim → zar → Knight 1 combat → win/loss → reward/flag → placeholder.

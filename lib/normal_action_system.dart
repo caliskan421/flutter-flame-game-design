@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 import 'action_system.dart';
 
 class NormalActionSystem extends ArenaActionSystem {
-  const NormalActionSystem();
+  // [bossOpeningDelay]: encounter'da zar başarısıyla (sessiz yaklaşma) boss'un
+  // ilk saldırısını geciktirmek için. Varsayılan 0 → düz normal maç değişmez.
+  const NormalActionSystem({this.bossOpeningDelay = 0});
+
+  @override
+  final double bossOpeningDelay;
 
   @override
   String get id => 'normal';

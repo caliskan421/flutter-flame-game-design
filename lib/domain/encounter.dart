@@ -67,9 +67,19 @@ class DiceCheckStep extends EncounterStepDef {
 }
 
 class CombatStep extends EncounterStepDef {
-  const CombatStep(this.bossId, {this.introText});
+  const CombatStep(
+    this.bossId, {
+    this.introText,
+    this.slowOpeningFlag,
+    this.slowOpeningDelay = 0,
+  });
   final String bossId;
   final String? introText;
+  // Hikaye→combat modifikatörü (VERİDE): bu flag set'liyse boss ilk saldırısını
+  // [slowOpeningDelay] sn geciktirir (sessiz yaklaşma ödülü). game.dart içerik
+  // adını bilmez; yalnız bu alanları okur (parry/dodge math'ine dokunulmaz).
+  final String? slowOpeningFlag;
+  final double slowOpeningDelay;
   @override
   EncounterStepKind get kind => EncounterStepKind.combat;
 }
@@ -92,8 +102,12 @@ class EncounterDef {
     required this.id,
     required this.title,
     required this.steps,
+    this.clearFlagsOnStart = const <String>[],
   });
   final String id;
   final String title;
   final List<EncounterStepDef> steps;
+  // Encounter başında temizlenecek GEÇİCİ flag'ler (örn. zar sonucu). Kalıcı
+  // ilerleme flag'leri (boss_*_defeated) burada OLMAZ → tekrar oynatma temiz başlar.
+  final List<String> clearFlagsOnStart;
 }

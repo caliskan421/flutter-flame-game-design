@@ -31,6 +31,11 @@ Future<void> main() async {
           'controls': (ctx, g) => ControlsOverlay(g),
           'won': (ctx, g) => EndOverlay(g, won: true),
           'lost': (ctx, g) => EndOverlay(g, won: false),
+          // Faz G — encounter akış overlay'leri.
+          'dialogue': (ctx, g) => EncounterDialogueOverlay(g),
+          'choice': (ctx, g) => EncounterChoiceOverlay(g),
+          'dice': (ctx, g) => EncounterDiceOverlay(g),
+          'reward': (ctx, g) => EncounterRewardOverlay(g),
         },
         // Açılış: doğrudan combat/test arenası.
         initialActiveOverlays: const ['testSelect'],

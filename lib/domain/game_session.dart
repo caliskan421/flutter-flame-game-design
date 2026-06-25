@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'scenario_state.dart';
+
 // ============================================================================
 //  GAME SESSION  —  paylaşılan/RPG durumu için ev (Faz A iskeleti → Faz E)
 // ----------------------------------------------------------------------------
@@ -20,6 +22,31 @@ class GameSession extends ChangeNotifier {
 
   /// En son tamamlanan normal maçın sonucu.
   MatchResult lastResult = MatchResult.none;
+
+  /// Faz G: senaryo/encounter durumu (flag/stat/resource/ilerleme). Combat bu
+  /// flag'leri OKUR (örn. approached_silently), diyalog akışını bilmez (§8.4).
+  final ScenarioState scenario = ScenarioState();
+
+  /// Senaryo mutasyonu + dinleyicilere haber (UI/overlay bağlanabilsin).
+  void setFlag(String flag) {
+    scenario.setFlag(flag);
+    notifyListeners();
+  }
+
+  void giveResource(String resource, int amount) {
+    scenario.giveResource(resource, amount);
+    notifyListeners();
+  }
+
+  void setStat(String stat, int value) {
+    scenario.setStat(stat, value);
+    notifyListeners();
+  }
+
+  void markEncounterCompleted(String encounterId) {
+    scenario.markCompleted(encounterId);
+    notifyListeners();
+  }
 
   /// Normal maç için boss seçildi: id yazılır, önceki sonuç sıfırlanır.
   void selectBoss(String id) {

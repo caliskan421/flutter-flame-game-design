@@ -21,12 +21,17 @@ import 'package:flutter/services.dart';
 import 'package:gamepads/gamepads.dart';
 
 import 'action_system.dart';
+import 'app/flow/encounter_runner.dart';
 import 'audio.dart';
 import 'boss.dart';
 import 'characters.dart';
+import 'combat/rules/combat_event.dart';
 import 'core/event_bus.dart';
+import 'core/rng.dart';
 import 'core/time_fx.dart';
 import 'domain/combat_metrics.dart';
+import 'domain/dice_service.dart';
+import 'domain/encounter.dart';
 import 'domain/game_session.dart';
 import 'normal_action_system.dart';
 import 'fx.dart';
@@ -59,7 +64,7 @@ bool testAttackModeUsesScenarioRules(TestAttackMode attackMode) {
 // ============================================================================
 //  OYUN
 // ============================================================================
-class BossArenaGame extends FlameGame with KeyboardEvents {
+class BossArenaGame extends FlameGame with KeyboardEvents implements EncounterHost {
   late final Player player;
   Boss? boss; // test senaryosu seçilince (yeniden) kurulur
 
@@ -73,6 +78,21 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   // Normal (ölümlü) maç akışının saf durumu — seçilen boss + sonuç (Faz E).
   // game.dart bunu OKUR/YAZAR; GameSession Flame'e dokunmayan saf domain'dir.
   final GameSession session = GameSession();
+
+  // --- ENCOUNTER / RPG AKIŞI (Faz G) ----------------------------------------
+  // Aktif encounter'ın akış otoritesi EncounterRunner'dır (D6 çözümü); game.dart
+  // yalnız EncounterHost olarak komutları (overlay aç / combat başlat) uygular.
+  // Encounter aktif değilken null → düz menü/normal-maç yolu aynen çalışır.
+  final Rng scenarioRng = Rng();
+  EncounterRunner? activeEncounter;
+  bool get encounterActive => activeEncounter != null;
+
+  // Aktif overlay verileri (overlay'ler bunları render eder, mantık tutmaz).
+  DialogueNodeDef? activeDialogue;
+  ChoiceDef? activeChoice;
+  DiceCheckDef? activeDiceCheck;
+  DiceResult? activeDiceResult;
+  RewardStep? activeReward;
 
   // Test arenası açık mı? (ölümsüzlük + sabit yakın mesafe + yerinde döngü)
   bool get testMode => actionSystem.isTest;
@@ -496,6 +516,7 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
     actionSystem = const TestActionSystem();
     testAttackMode = TestAttackMode.attack1;
     selectedChar = null;
+    _endEncounter(); // aktif encounter'ı bırak + encounter overlay'lerini temizle
     player.setMovementTrainingEnabled(false);
     _clearMovementInput();
     boss?.removeFromParent();
@@ -574,6 +595,11 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   void restart() {
     overlays.remove('won');
     overlays.remove('lost');
+    // Encounter aktifse: maçı encounter bağlamında (aynı combat adımı) tekrar et.
+    if (encounterActive) {
+      activeEncounter!.retryCombat();
+      return;
+    }
     if (normalMatchMode) {
       startNormalMatch(selectedChar!); // aynı boss'a karşı yeniden
       return;
@@ -586,6 +612,149 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
   }
 
   void closeApp() => exit(0);
+
+  // ==========================================================================
+  //  ENCOUNTER / RPG AKIŞI — Faz G
+  // --------------------------------------------------------------------------
+  //  game.dart EncounterHost'tur: EncounterRunner adımları yürütür, burada yalnız
+  //  "ne göster / combat başlat" komutları uygulanır. Akış mantığı runner'da
+  //  (D6 çözümü). Zar yalnız hikayeyi etkiler (combat math'ine dokunulmaz).
+  // ==========================================================================
+
+  /// Bir encounter'ı baştan başlat (menüden çağrılır).
+  void startEncounter(EncounterDef def) {
+    _clearEncounterOverlays();
+    overlays.remove('testSelect');
+    overlays.remove('testPanel');
+    overlays.remove('bossSelect');
+    overlays.remove('won');
+    overlays.remove('lost');
+    activeEncounter = EncounterRunner(
+      def: def,
+      state: session.scenario,
+      rng: scenarioRng,
+      host: this,
+    );
+    activeEncounter!.start();
+  }
+
+  void _endEncounter() {
+    activeEncounter = null;
+    _clearEncounterOverlays();
+  }
+
+  void _clearEncounterOverlays() {
+    overlays.remove('dialogue');
+    overlays.remove('choice');
+    overlays.remove('dice');
+    overlays.remove('reward');
+    activeDialogue = null;
+    activeChoice = null;
+    activeDiceCheck = null;
+    activeDiceResult = null;
+    activeReward = null;
+  }
+
+  // --- EncounterHost komutları (runner → game) ---
+  @override
+  void showDialogue(DialogueNodeDef node) {
+    activeDialogue = node;
+    overlays.add('dialogue');
+  }
+
+  @override
+  void showChoice(ChoiceDef choice) {
+    activeChoice = choice;
+    overlays.add('choice');
+  }
+
+  @override
+  void showDiceCheck(DiceCheckDef check, DiceResult result) {
+    activeDiceCheck = check;
+    activeDiceResult = result;
+    overlays.add('dice');
+  }
+
+  @override
+  void startCombat(CombatStep step) => _startEncounterCombat(step);
+
+  @override
+  void showReward(RewardStep step) {
+    activeReward = step;
+    overlays.add('reward');
+  }
+
+  @override
+  void onCombatLost(EncounterDef encounter) {
+    // Standart yenilgi ekranı; YENİDEN → restart() encounter'ı retry eder.
+    overlays.add('lost');
+  }
+
+  @override
+  void onEncounterComplete(EncounterDef encounter) {
+    session.markEncounterCompleted(encounter.id);
+    // İlk slice: sonraki encounter placeholder → menüye dön.
+    backToModeSelect();
+  }
+
+  // --- Overlay → runner geri çağrıları (overlay komut yollar, mantık tutmaz) ---
+  // Null guard'lar: hızlı çift-tık ikinci kez ilerletmesin (payload bir kez
+  // tüketilir; ikinci çağrı erken döner).
+  void dialogueAdvance() {
+    if (activeDialogue == null) return;
+    activeDialogue = null;
+    overlays.remove('dialogue');
+    activeEncounter?.next();
+  }
+
+  void choicePick(int index) {
+    if (activeChoice == null) return;
+    activeChoice = null;
+    overlays.remove('choice');
+    activeEncounter?.choose(index);
+  }
+
+  void diceAdvance() {
+    if (activeDiceResult == null) return;
+    activeDiceCheck = null;
+    activeDiceResult = null;
+    overlays.remove('dice');
+    activeEncounter?.next();
+  }
+
+  void rewardAdvance() {
+    if (activeReward == null) return;
+    activeReward = null;
+    overlays.remove('reward');
+    activeEncounter?.next();
+  }
+
+  // --- Encounter combat: Faz E maçını başlat + zar modifikatörünü uygula ---
+  void _startEncounterCombat(CombatStep step) {
+    final def = characterById(step.bossId);
+    session.selectBoss(def.id);
+    testAttackMode = TestAttackMode.attack1;
+    selectedChar = def;
+    // Hikaye→combat modifikatörü VERİDEN okunur (içerik adı game.dart'a gömülü
+    // değil): step.slowOpeningFlag set'liyse boss ilk saldırısını geciktirir.
+    final slow = step.slowOpeningFlag != null &&
+        session.scenario.hasFlag(step.slowOpeningFlag!);
+    actionSystem = NormalActionSystem(
+      bossOpeningDelay: slow ? step.slowOpeningDelay : 0,
+    );
+    player.setMovementTrainingEnabled(false);
+    _clearMovementInput();
+    final old = boss;
+    if (old != null) old.removeFromParent();
+    final b = Boss(def);
+    boss = b;
+    add(b);
+    b.place(_bossBasePos());
+    _clearEncounterOverlays();
+    overlays.remove('won');
+    overlays.remove('lost');
+    beginMatch();
+  }
 
   void openControlsOverlay() {
     overlays.add('controls');
@@ -913,19 +1082,38 @@ class BossArenaGame extends FlameGame with KeyboardEvents {
         // ölüm animasyonu/sesi bitince yenilgi ekranı.
         if (player.deathDone) {
           phase = GamePhase.lost;
-          if (normalMatchMode) session.recordResult(MatchResult.lost);
+          // Encounter combat sonucunu normal-maç geçmişine yazma (kirlenmesin);
+          // encounter kendi sonucunu flag'lerle taşır.
+          if (normalMatchMode && !encounterActive) {
+            session.recordResult(MatchResult.lost);
+          }
           overlays.remove('testPanel');
           overlays.remove('controls');
-          overlays.add('lost');
+          // Encounter aktifse sonucu runner'a bildir (retry/menü kararı orada);
+          // değilse standart yenilgi ekranı.
+          if (encounterActive) {
+            activeEncounter!.onCombatResult(false);
+          } else {
+            overlays.add('lost');
+          }
         }
       } else if (bossDead) {
         b.die(); // ölüm animasyonunu başlat (idempotent)
         if (b.deathDone) {
           phase = GamePhase.won;
-          if (normalMatchMode) session.recordResult(MatchResult.won);
+          if (normalMatchMode && !encounterActive) {
+            session.recordResult(MatchResult.won);
+          }
+          // BossDefeated event'i (Faz B'de rezerve, şimdi yayılıyor): akışı/
+          // metrikleri besler. CombatPresenter no-op; encounter runner sonucu okur.
+          bus.emit(BossDefeated(b.def.id));
           overlays.remove('testPanel');
           overlays.remove('controls');
-          overlays.add('won');
+          if (encounterActive) {
+            activeEncounter!.onCombatResult(true); // → ödül adımı
+          } else {
+            overlays.add('won');
+          }
         }
       }
     }

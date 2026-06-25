@@ -101,4 +101,11 @@ abstract class ArenaActionSystem {
   // Guard-break punish: oyuncunun postürü kırılıp açık kalınca boss GARANTİ
   // hızlı punish beat başlatır.
   bool get bossGuardBreakPunish => true;
+
+  // --- ENCOUNTER / HİKAYE MODİFİKATÖRÜ (Faz G) -------------------------------
+  // Maç başında boss'un İLK saldırısına eklenen ek bekleme (s). Encounter'da
+  // zar başarısı (sessiz yaklaşma) → boss ilk fazda DAHA GEÇ agresifleşir. Zar
+  // YALNIZ bu zamanlamayı etkiler; parry/dodge math'ine dokunmaz (§14, ilke 8).
+  // Varsayılan 0 → sandbox/normal maç davranışı değişmez.
+  double get bossOpeningDelay => 0;
 }
