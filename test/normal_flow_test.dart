@@ -27,8 +27,7 @@ void main() {
       expect(sandbox.minBossHealth, 1);
     });
 
-    test('TestActionSystem(realMatch=true): MEVCUT senaryo testi yolu ölümlü',
-        () {
+    test('TestActionSystem(realMatch=true): MEVCUT senaryo testi yolu ölümlü', () {
       // Bu, normal modun (NormalActionSystem) İKİNCİ bir yolu DEĞİL; Faz E
       // öncesinden var olan combat-senaryo test akışıdır (startCombatScenarioIntro
       // → _setTestRealMatch(true)). isTest=true kalır → normalMatchMode'a girmez.
@@ -40,23 +39,25 @@ void main() {
       expect(deadly.minBossHealth, 0);
     });
 
-    test('iki mod birbirine sızmaz: sandbox sandbox kalır, normal normal kalır',
-        () {
-      // Aynı türden iki ayrı örnek; biri diğerinin kuralını DEĞİŞTİREMEZ.
-      const sandbox = TestActionSystem();
-      const normal = NormalActionSystem();
-      expect(sandbox.isTest, isTrue);
-      expect(normal.isTest, isFalse);
-      // Sandbox ölümsüzlüğü; normal mod ölümlülüğü — hiçbir paylaşılan durum yok.
-      expect(sandbox.playerCanDie || sandbox.bossCanDie, isFalse);
-      expect(normal.playerCanDie && normal.bossCanDie, isTrue);
-      // Sandbox'ta yerinde döngü açık, normal modda kapalı.
-      expect(sandbox.lockBossToBaseX, isTrue);
-      expect(normal.lockBossToBaseX, isFalse);
-      // Sandbox sınırsız stamina; normal mod sınırlı.
-      expect(sandbox.unlimitedStamina, isTrue);
-      expect(normal.unlimitedStamina, isFalse);
-    });
+    test(
+      'iki mod birbirine sızmaz: sandbox sandbox kalır, normal normal kalır',
+      () {
+        // Aynı türden iki ayrı örnek; biri diğerinin kuralını DEĞİŞTİREMEZ.
+        const sandbox = TestActionSystem();
+        const normal = NormalActionSystem();
+        expect(sandbox.isTest, isTrue);
+        expect(normal.isTest, isFalse);
+        // Sandbox ölümsüzlüğü; normal mod ölümlülüğü — hiçbir paylaşılan durum yok.
+        expect(sandbox.playerCanDie || sandbox.bossCanDie, isFalse);
+        expect(normal.playerCanDie && normal.bossCanDie, isTrue);
+        // Sandbox'ta yerinde döngü açık, normal modda kapalı.
+        expect(sandbox.lockBossToBaseX, isTrue);
+        expect(normal.lockBossToBaseX, isFalse);
+        // Sandbox sınırsız stamina; normal mod sınırlı.
+        expect(sandbox.unlimitedStamina, isTrue);
+        expect(normal.unlimitedStamina, isFalse);
+      },
+    );
   });
 
   group('boss roster for normal match', () {
@@ -77,7 +78,7 @@ void main() {
   // normal modun TEK yerden bağlandığını ve eşiklerin getter'dan okunduğunu
   // (hard-code edilmediğini) kanıtlar.
   group('game.dart wiring guards', () {
-    final source = File('lib/game.dart').readAsStringSync();
+    final source = File('lib/app/game/boss_arena_game.dart').readAsStringSync();
 
     test('NormalActionSystem yalnız tek yerden (mod seçimi) set edilir', () {
       expect(
@@ -86,16 +87,18 @@ void main() {
       );
     });
 
-    test('win/loss eşikleri actionSystem getter\'larından okunur, hard-code değil',
-        () {
-      expect(source, contains('actionSystem.playerCanDie'));
-      expect(source, contains('actionSystem.bossCanDie'));
-      expect(source, contains('actionSystem.minPlayerHealth'));
-      expect(source, contains('actionSystem.minBossHealth'));
-      // Eski hard-code eşik kaldırıldı.
-      expect(source, isNot(contains('player.health <= 0')));
-      expect(source, isNot(contains('b.health <= 0')));
-    });
+    test(
+      'win/loss eşikleri actionSystem getter\'larından okunur, hard-code değil',
+      () {
+        expect(source, contains('actionSystem.playerCanDie'));
+        expect(source, contains('actionSystem.bossCanDie'));
+        expect(source, contains('actionSystem.minPlayerHealth'));
+        expect(source, contains('actionSystem.minBossHealth'));
+        // Eski hard-code eşik kaldırıldı.
+        expect(source, isNot(contains('player.health <= 0')));
+        expect(source, isNot(contains('b.health <= 0')));
+      },
+    );
   });
 
   group('GameSession (saf durum)', () {

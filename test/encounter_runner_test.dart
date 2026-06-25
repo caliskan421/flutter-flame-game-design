@@ -41,29 +41,33 @@ class FakeHost implements EncounterHost {
 }
 
 EncounterDef _encounter() => const EncounterDef(
-      id: 'ash_gate',
-      title: 'Ash Gate',
-      steps: [
-        DialogueStep(DialogueNodeDef('intro', [DialogueLine('Bekçi', 'Dur!')])),
-        ChoiceStep(ChoiceDef('Nasıl yaklaşırsın?', [
-          ChoiceOption('Gölgeden', effects: [SetStat('stealth', 10)]),
-          ChoiceOption('Doğrudan', effects: [SetStat('stealth', -10)]),
-        ])),
-        DiceCheckStep(DiceCheckDef(
-          id: 'sneak',
-          stat: 'stealth',
-          difficulty: 12,
-          onSuccess: [SetFlag('approached_silently')],
-          onFailure: [SetFlag('spotted')],
-        )),
-        CombatStep('knight_1'),
-        RewardStep(
-          title: 'Zafer',
-          text: 'Kapı senin.',
-          effects: [SetFlag('boss_knight_1_defeated'), GiveResource('honor', 1)],
-        ),
-      ],
-    );
+  id: 'ash_gate',
+  title: 'Ash Gate',
+  steps: [
+    DialogueStep(DialogueNodeDef('intro', [DialogueLine('Bekçi', 'Dur!')])),
+    ChoiceStep(
+      ChoiceDef('Nasıl yaklaşırsın?', [
+        ChoiceOption('Gölgeden', effects: [SetStat('stealth', 10)]),
+        ChoiceOption('Doğrudan', effects: [SetStat('stealth', -10)]),
+      ]),
+    ),
+    DiceCheckStep(
+      DiceCheckDef(
+        id: 'sneak',
+        stat: 'stealth',
+        difficulty: 12,
+        onSuccess: [SetFlag('approached_silently')],
+        onFailure: [SetFlag('spotted')],
+      ),
+    ),
+    CombatStep('knight_1'),
+    RewardStep(
+      title: 'Zafer',
+      text: 'Kapı senin.',
+      effects: [SetFlag('boss_knight_1_defeated'), GiveResource('honor', 1)],
+    ),
+  ],
+);
 
 void main() {
   group('EncounterRunner', () {
@@ -143,7 +147,9 @@ void main() {
         id: 'e',
         title: 'E',
         clearFlagsOnStart: ['approached_silently', 'alerted_guard'],
-        steps: [DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')]))],
+        steps: [
+          DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')])),
+        ],
       );
       // Önceki oynatmadan kalan flag.
       final state = ScenarioState()..setFlag('approached_silently');
@@ -162,17 +168,52 @@ void main() {
         id: 'e',
         title: 'E',
         clearFlagsOnStart: ['approached_silently'],
-        steps: [DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')]))],
+        steps: [
+          DialogueStep(DialogueNodeDef('d', [DialogueLine('x', 'y')])),
+        ],
       );
       final state = ScenarioState()..setFlag('boss_knight_1_defeated');
-      EncounterRunner(def: def, state: state, rng: Rng.seeded(1), host: FakeHost())
-          .start();
+      EncounterRunner(
+        def: def,
+        state: state,
+        rng: Rng.seeded(1),
+        host: FakeHost(),
+      ).start();
       expect(state.hasFlag('boss_knight_1_defeated'), isTrue);
     });
 
-    test('ödül yalnız İLK tamamlamada verilir (tekrar oynamada çift ödül yok)', () {
-      final state = ScenarioState();
-      void playToWin() {
+    test(
+      'ödül yalnız İLK tamamlamada verilir (tekrar oynamada çift ödül yok)',
+      () {
+        final state = ScenarioState();
+        void playToWin() {
+          final runner = EncounterRunner(
+            def: _encounter(),
+            state: state,
+            rng: Rng.seeded(1),
+            host: FakeHost(),
+          );
+          runner.start();
+          runner.next(); // choice
+          runner.choose(0); // dice
+          runner.next(); // combat
+          runner.onCombatResult(true); // reward
+          runner.next(); // complete
+        }
+
+        playToWin();
+        expect(state.resource('honor'), 1);
+        expect(state.isCompleted('ash_gate'), isTrue);
+
+        playToWin(); // tekrar oyna — completedEncounters kalıcı → ödül tekrar verilmez
+        expect(state.resource('honor'), 1);
+      },
+    );
+
+    test(
+      'ödül + tamamlandı ATOMİK: reward gösterilince (kapanmadan) completed',
+      () {
+        final state = ScenarioState();
         final runner = EncounterRunner(
           def: _encounter(),
           state: state,
@@ -183,35 +224,14 @@ void main() {
         runner.next(); // choice
         runner.choose(0); // dice
         runner.next(); // combat
-        runner.onCombatResult(true); // reward
-        runner.next(); // complete
-      }
-
-      playToWin();
-      expect(state.resource('honor'), 1);
-      expect(state.isCompleted('ash_gate'), isTrue);
-
-      playToWin(); // tekrar oyna — completedEncounters kalıcı → ödül tekrar verilmez
-      expect(state.resource('honor'), 1);
-    });
-
-    test('ödül + tamamlandı ATOMİK: reward gösterilince (kapanmadan) completed', () {
-      final state = ScenarioState();
-      final runner = EncounterRunner(
-        def: _encounter(),
-        state: state,
-        rng: Rng.seeded(1),
-        host: FakeHost(),
-      );
-      runner.start();
-      runner.next(); // choice
-      runner.choose(0); // dice
-      runner.next(); // combat
-      runner.onCombatResult(true); // reward gösterildi — ama next() ÇAĞRILMADI
-      // Reward ekranındayken "çökme" simülasyonu: completed + honor zaten kalıcı.
-      expect(state.isCompleted('ash_gate'), isTrue);
-      expect(state.resource('honor'), 1);
-    });
+        runner.onCombatResult(
+          true,
+        ); // reward gösterildi — ama next() ÇAĞRILMADI
+        // Reward ekranındayken "çökme" simülasyonu: completed + honor zaten kalıcı.
+        expect(state.isCompleted('ash_gate'), isTrue);
+        expect(state.resource('honor'), 1);
+      },
+    );
 
     test('onStateChanged efekt/tamamlamada tetiklenir (kalıcılık kancası)', () {
       var changes = 0;

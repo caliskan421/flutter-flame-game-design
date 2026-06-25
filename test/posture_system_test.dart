@@ -77,7 +77,11 @@ void main() {
 
     test('tickDisplay gerçek değere doğru yumuşar', () {
       final p = PostureSystem(100);
-      p.applyDamage(50, dying: false, staggered: false); // value=50, display=100
+      p.applyDamage(
+        50,
+        dying: false,
+        staggered: false,
+      ); // value=50, display=100
       p.tickDisplay(0.05); // display 50'ye doğru yaklaşır ama tam ulaşmaz
       expect(p.display, lessThan(100));
       expect(p.display, greaterThan(50));

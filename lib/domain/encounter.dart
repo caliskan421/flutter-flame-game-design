@@ -12,7 +12,12 @@ enum EncounterStepKind { dialogue, choice, diceCheck, combat, reward }
 
 // --- DİYALOG ---
 class DialogueLine {
-  const DialogueLine(this.speaker, this.text, {this.portrait, this.left = true});
+  const DialogueLine(
+    this.speaker,
+    this.text, {
+    this.portrait,
+    this.left = true,
+  });
   final String speaker;
   final String text;
   final String? portrait; // opsiyonel portre asset'i
@@ -27,9 +32,14 @@ class DialogueNodeDef {
 
 // --- SEÇİM ---
 class ChoiceOption {
-  const ChoiceOption(this.label, {this.effects = const <ScenarioEffect>[], this.hint});
+  const ChoiceOption(
+    this.label, {
+    this.effects = const <ScenarioEffect>[],
+    this.hint,
+  });
   final String label;
-  final List<ScenarioEffect> effects; // seçilince uygulanır (örn. SetStat stealth)
+  final List<ScenarioEffect>
+  effects; // seçilince uygulanır (örn. SetStat stealth)
   final String? hint; // küçük açıklama (ör. "Gizlilik kontrolü")
 }
 

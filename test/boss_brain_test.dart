@@ -8,13 +8,12 @@ Beat _beat({
   DefenseProfile defense = DefenseProfile.normal,
   BeatKind kind = BeatKind.meleeLight,
   String? projectileKey,
-}) =>
-    Beat(
-      kind: kind,
-      defense: defense,
-      animKey: 'a',
-      projectileKey: projectileKey,
-    );
+}) => Beat(
+  kind: kind,
+  defense: defense,
+  animKey: 'a',
+  projectileKey: projectileKey,
+);
 
 void main() {
   group('BossBrain — alışkanlık EMA', () {
@@ -29,7 +28,8 @@ void main() {
     });
 
     test('decay düşürür, reset sıfırlar', () {
-      final b = BossBrain()..registerHabit(parry: true, dodge: true, attack: true);
+      final b = BossBrain()
+        ..registerHabit(parry: true, dodge: true, attack: true);
       final before = b.parryHabit;
       b.decay(1.0);
       expect(b.parryHabit, lessThan(before));
@@ -41,7 +41,9 @@ void main() {
   });
 
   group('BossBrain — pickCombo', () {
-    final tracking = ComboPattern([_beat(defense: DefenseProfile.tracking)], weight: 1);
+    final tracking = ComboPattern([
+      _beat(defense: DefenseProfile.tracking),
+    ], weight: 1);
     final plain = ComboPattern([_beat()], weight: 1);
     final lateGame = ComboPattern([_beat()], weight: 1, minPhase: 1);
 

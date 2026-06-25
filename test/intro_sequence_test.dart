@@ -52,8 +52,9 @@ void main() {
     // 'giris senaryo/...' anahtarini bulamaz. Bu test NFD formunu korur.
     test('s-cedilla dosya adlari NFD (U+0327) formunda', () {
       final images = kCombatIntroSequence.cues.map((c) => c.image).toList();
-      final withCedilla =
-          images.where((s) => s.codeUnits.contains(0x0327)).toList();
+      final withCedilla = images
+          .where((s) => s.codeUnits.contains(0x0327))
+          .toList();
       expect(withCedilla, hasLength(3));
       for (final img in images) {
         expect(img.codeUnits.contains(0x015F), isFalse, reason: img);

@@ -14,28 +14,31 @@ class FakeStore implements SaveStore {
 
 void main() {
   group('GameSession kalıcılık (merkezi)', () {
-    test('mutasyon → otomatik persist; yeni oturum aynı store → yükler', () async {
-      final store = FakeStore();
+    test(
+      'mutasyon → otomatik persist; yeni oturum aynı store → yükler',
+      () async {
+        final store = FakeStore();
 
-      final s1 = GameSession();
-      await s1.attachPersistence(SaveRepository(store));
-      expect(s1.hasProgress, isFalse);
+        final s1 = GameSession();
+        await s1.attachPersistence(SaveRepository(store));
+        expect(s1.hasProgress, isFalse);
 
-      s1.setFlag('boss_knight_1_defeated');
-      s1.giveResource('honor', 1);
-      s1.markEncounterCompleted('ash_gate');
-      // persist fire-and-forget; microtask'ların boşalmasını bekle.
-      await Future<void>.delayed(Duration.zero);
-      expect(store.data, isNotNull);
+        s1.setFlag('boss_knight_1_defeated');
+        s1.giveResource('honor', 1);
+        s1.markEncounterCompleted('ash_gate');
+        // persist fire-and-forget; microtask'ların boşalmasını bekle.
+        await Future<void>.delayed(Duration.zero);
+        expect(store.data, isNotNull);
 
-      // Oyunu "kapat-aç": aynı store ile yeni oturum.
-      final s2 = GameSession();
-      await s2.attachPersistence(SaveRepository(store));
-      expect(s2.hasProgress, isTrue);
-      expect(s2.scenario.hasFlag('boss_knight_1_defeated'), isTrue);
-      expect(s2.scenario.resource('honor'), 1);
-      expect(s2.scenario.isCompleted('ash_gate'), isTrue);
-    });
+        // Oyunu "kapat-aç": aynı store ile yeni oturum.
+        final s2 = GameSession();
+        await s2.attachPersistence(SaveRepository(store));
+        expect(s2.hasProgress, isTrue);
+        expect(s2.scenario.hasFlag('boss_knight_1_defeated'), isTrue);
+        expect(s2.scenario.resource('honor'), 1);
+        expect(s2.scenario.isCompleted('ash_gate'), isTrue);
+      },
+    );
 
     test('resetProgress → bellek ve disk temizlenir', () async {
       final store = FakeStore();

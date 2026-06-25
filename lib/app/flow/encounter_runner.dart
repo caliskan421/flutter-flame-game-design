@@ -63,7 +63,9 @@ class EncounterRunner {
         cleared = true;
       }
     }
-    if (cleared) onStateChanged?.call(); // temizlik de kalıcı olsun (diskten sil)
+    if (cleared) {
+      onStateChanged?.call(); // temizlik de kalıcı olsun (diskten sil)
+    }
     _index = -1;
     _advance();
   }
@@ -119,7 +121,11 @@ class EncounterRunner {
       case ChoiceStep(:final choice):
         host.showChoice(choice);
       case DiceCheckStep(:final check):
-        final result = DiceService.roll(check, rng, statBonus: state.stat(check.stat));
+        final result = DiceService.roll(
+          check,
+          rng,
+          statBonus: state.stat(check.stat),
+        );
         final effects = result.success ? check.onSuccess : check.onFailure;
         for (final e in effects) {
           _applyEffect(e);

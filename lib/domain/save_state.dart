@@ -32,11 +32,11 @@ class SaveState {
 
   /// Bellekteki ScenarioState'ten anlık görüntü al (kopyalar — paylaşım yok).
   factory SaveState.fromScenario(ScenarioState s) => SaveState(
-        flags: <String>{...s.flags},
-        stats: <String, int>{...s.stats},
-        resources: <String, int>{...s.resources},
-        completedEncounters: <String>[...s.completedEncounters],
-      );
+    flags: <String>{...s.flags},
+    stats: <String, int>{...s.stats},
+    resources: <String, int>{...s.resources},
+    completedEncounters: <String>[...s.completedEncounters],
+  );
 
   /// Bu kaydı bir ScenarioState'e uygula (önce temizler → tam yükleme).
   void applyTo(ScenarioState s) {
@@ -51,12 +51,12 @@ class SaveState {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'version': version,
-        'flags': flags.toList(),
-        'stats': stats,
-        'resources': resources,
-        'completedEncounters': completedEncounters,
-      };
+    'version': version,
+    'flags': flags.toList(),
+    'stats': stats,
+    'resources': resources,
+    'completedEncounters': completedEncounters,
+  };
 
   /// Savunmacı parse: eksik/yanlış-tip alanlar varsayılana düşer (çökme yok).
   factory SaveState.fromJson(Map<String, Object?> j) {

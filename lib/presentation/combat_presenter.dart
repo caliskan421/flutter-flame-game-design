@@ -10,11 +10,11 @@
 // ============================================================================
 import 'dart:ui' show Color;
 
-import '../audio.dart';
-import '../combat/rules/combat_event.dart';
-import '../core/event_bus.dart';
-import '../fx.dart';
-import '../game.dart';
+import 'package:boss_parry_arena/app/game/boss_arena_game.dart';
+import 'package:boss_parry_arena/combat/rules/combat_event.dart';
+import 'package:boss_parry_arena/core/event_bus.dart';
+import 'package:boss_parry_arena/presentation/audio.dart';
+import 'package:boss_parry_arena/presentation/fx.dart';
 
 class CombatPresenter {
   final BossArenaGame game;

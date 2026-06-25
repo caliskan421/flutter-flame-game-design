@@ -120,9 +120,7 @@ const PlayerMoveDef kPlayerParry = PlayerMoveDef(
   timeline: ActionTimeline(
     id: 'player.parry',
     duration: kPlayerParryWindow,
-    windows: [
-      ActionWindow(CombatWindowKind.parry, 0, kPlayerParryWindow),
-    ],
+    windows: [ActionWindow(CombatWindowKind.parry, 0, kPlayerParryWindow)],
   ),
 );
 

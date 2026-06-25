@@ -19,11 +19,11 @@ class FakeStore implements SaveStore {
 }
 
 SaveState _sampleSave() => SaveState.fromScenario(
-      ScenarioState()
-        ..setFlag('boss_knight_1_defeated')
-        ..giveResource('honor', 2)
-        ..markCompleted('ash_gate'),
-    );
+  ScenarioState()
+    ..setFlag('boss_knight_1_defeated')
+    ..giveResource('honor', 2)
+    ..markCompleted('ash_gate'),
+);
 
 void main() {
   group('SaveRepository (fake store)', () {
@@ -53,7 +53,10 @@ void main() {
 
     test('uyumsuz şema sürümü → null (güvenli sıfırla)', () async {
       final store = FakeStore()
-        ..data = jsonEncode({'version': 999, 'flags': ['x']});
+        ..data = jsonEncode({
+          'version': 999,
+          'flags': ['x'],
+        });
       expect(await SaveRepository(store).load(), isNull);
     });
 

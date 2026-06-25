@@ -79,7 +79,8 @@ const Map<String, AnimationBinding> kAnimationBindings = {
   // penceresinde `once`'ın gösterdiği kare aralığına düşer.
   'player.attack.light': AnimationBinding(
     id: 'player.attack.light',
-    sheetKey: 'attack1', // light combo attack1/2/3 sheet'lerini gezer; ilk vuruş
+    sheetKey:
+        'attack1', // light combo attack1/2/3 sheet'lerini gezer; ilk vuruş
     markerFrames: {'contact': 1},
   ),
   'player.attack.heavy': AnimationBinding(
@@ -107,5 +108,5 @@ AnimationBinding? resolveAnimationBinding(String? id) =>
 /// değil, güvenli fallback'e çevrilir.
 int? contactFrameFor(AnimationBinding? binding, String sheetKey) =>
     (binding != null && binding.sheetKey == sheetKey)
-        ? binding.contactFrame
-        : null;
+    ? binding.contactFrame
+    : null;

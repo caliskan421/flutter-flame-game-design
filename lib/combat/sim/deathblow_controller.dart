@@ -1,4 +1,4 @@
-part of '../../boss.dart';
+part of 'boss.dart';
 
 // Faz F: boss.dart god-object'inden `part of` ile aynı kütüphanede ayrıştırıldı.
 // Davranış-koruyan saf TAŞIMA: alanlar/statikler Boss'ta kalır, metodlar bu
@@ -25,6 +25,7 @@ extension BossDeathblow on Boss {
     _queuedDeathblowHeavy = false;
     _resolveDeathblowImpact(hpBefore: hpBefore, heavy: heavy);
   }
+
   // -------------------------------------------------------- FAZ GEÇİŞİ (08)
   // Faz yalnız tempo çarpanı değil: eşik AŞILINCA (yalnız zorlaşma yönünde) kısa,
   // dokunulmaz bir staging. Sandbox'ta kapalı (pratik bölünmesin). Sahnelendiyse
@@ -55,12 +56,16 @@ extension BossDeathblow on Boss {
     // Sinematik: kükreme + orta sarsıntı + kısa slow-mo + uyarı yazısı.
     final label = phase >= 2 ? 'III. FAZ' : 'II. FAZ';
     game.bus.emit(ComboTextRequested(_topCenter, label));
-    game.bus.emit(PostureBreakFxRequested(_topCenter, color: _kThrust, scale: 1.2));
-    game.bus.emit(const VignetteRequested(
-      color: Color(0xFF6A3DD0),
-      maxLife: 0.7,
-      peakAlpha: 70,
-    ));
+    game.bus.emit(
+      PostureBreakFxRequested(_topCenter, color: _kThrust, scale: 1.2),
+    );
+    game.bus.emit(
+      const VignetteRequested(
+        color: Color(0xFF6A3DD0),
+        maxLife: 0.7,
+        peakAlpha: 70,
+      ),
+    );
     if (playSfx) game.bus.emit(const SfxRequested(SfxCue.phaseShift));
     game.bus.emit(ShakeRequested(8, 0.5));
     game.bus.emit(const SlowmoRequested(0.45, 0.5));

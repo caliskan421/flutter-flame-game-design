@@ -1,4 +1,4 @@
-part of '../../boss.dart';
+part of 'boss.dart';
 
 // Faz F: boss.dart god-object'inden `part of` ile aynı kütüphanede ayrıştırıldı.
 // Davranış-koruyan saf TAŞIMA: alanlar/statikler Boss'ta kalır, metodlar bu
@@ -361,7 +361,10 @@ extension BossCombat on Boss {
         ),
       );
       // Perfect dodge daha uzun punish penceresi açar.
-      _enter(BossState.offBalance, perfect ? Boss.punishWindow * 1.4 : Boss.punishWindow);
+      _enter(
+        BossState.offBalance,
+        perfect ? Boss.punishWindow * 1.4 : Boss.punishWindow,
+      );
     } else {
       // Normal saldırıyı sıyırdın: hasarsız kurtuluş (+perfect'te slow-mo) ama
       // boss komboya DEVAM eder. Açmak istiyorsan yönlü parry'le.
@@ -405,7 +408,6 @@ extension BossCombat on Boss {
     }
     _comboChainBroken = true;
   }
-
 
   // OYUNCU SALDIRISI temas etti (game.onPlayerAttackContact menzili doğrular).
   // staggered → F çoklu küçük HP, G infaz; offBalance → HP; kapalıysa posture chip.
@@ -462,8 +464,9 @@ extension BossCombat on Boss {
         _performStaggerLightHit();
       }
     } else if (state == BossState.offBalance) {
-      final hp = ((Boss.attackHpOpen + (game.player.hasTempo ? 4 : 0)) * comboMult)
-          .round();
+      final hp =
+          ((Boss.attackHpOpen + (game.player.hasTempo ? 4 : 0)) * comboMult)
+              .round();
       takeDamage(hp);
       game.bus.emit(DamageApplied(hp, toBoss: true));
       game.bus.emit(
@@ -477,7 +480,9 @@ extension BossCombat on Boss {
       if (type == PlayerAttackType.heavy) {
         game.bus.emit(ShakeRequested(4, 0.16));
       }
-      game.bus.emit(ComboTextRequested(_topCenter, finisher ? 'FİNİSHER' : 'CEZA'));
+      game.bus.emit(
+        ComboTextRequested(_topCenter, finisher ? 'FİNİSHER' : 'CEZA'),
+      );
       game.bus.emit(
         PopupRequested(_topCenter + Vector2(0, 30), '-$hp', fontSize: 20),
       );
@@ -638,5 +643,4 @@ extension BossCombat on Boss {
     _beatIndex = 0;
     _enter(BossState.windup, counter.windup);
   }
-
 }

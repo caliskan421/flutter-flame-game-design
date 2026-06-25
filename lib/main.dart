@@ -8,10 +8,10 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
-import 'audio.dart';
+import 'package:boss_parry_arena/presentation/audio.dart';
 import 'core/shared_prefs_save_store.dart';
 import 'domain/save_repository.dart';
-import 'game.dart';
+import 'package:boss_parry_arena/app/game/boss_arena_game.dart';
 import 'overlays.dart';
 
 final BossArenaGame game = BossArenaGame();

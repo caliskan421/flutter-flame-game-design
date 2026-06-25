@@ -53,26 +53,29 @@ void main() {
       expect(count, 1);
     });
 
-    test('dispatch sırasında abone kaldırılsa da o emit güvenli tamamlanır', () {
-      final bus = EventBus();
-      final order = <String>[];
-      late void Function() off;
-      bus.subscribe((_) {
-        order.add('first');
-        off(); // yayım sürerken üçüncü aboneyi kaldır
-      });
-      bus.subscribe((_) => order.add('second'));
-      off = bus.subscribe((_) => order.add('third'));
+    test(
+      'dispatch sırasında abone kaldırılsa da o emit güvenli tamamlanır',
+      () {
+        final bus = EventBus();
+        final order = <String>[];
+        late void Function() off;
+        bus.subscribe((_) {
+          order.add('first');
+          off(); // yayım sürerken üçüncü aboneyi kaldır
+        });
+        bus.subscribe((_) => order.add('second'));
+        off = bus.subscribe((_) => order.add('third'));
 
-      bus.emit(const PostureBroken());
-      // Kopya üzerinde gezinildiği için bu emit'te üçü de çağrılır.
-      expect(order, ['first', 'second', 'third']);
+        bus.emit(const PostureBroken());
+        // Kopya üzerinde gezinildiği için bu emit'te üçü de çağrılır.
+        expect(order, ['first', 'second', 'third']);
 
-      // Sonraki emit'te üçüncü artık yok.
-      order.clear();
-      bus.emit(const PostureBroken());
-      expect(order, ['first', 'second']);
-    });
+        // Sonraki emit'te üçüncü artık yok.
+        order.clear();
+        bus.emit(const PostureBroken());
+        expect(order, ['first', 'second']);
+      },
+    );
 
     test('farklı olay tipleri abonelere aynen geçer', () {
       final bus = EventBus();

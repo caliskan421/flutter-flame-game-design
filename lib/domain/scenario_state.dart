@@ -14,10 +14,10 @@ class ScenarioState {
     Map<String, int>? stats,
     Map<String, int>? resources,
     List<String>? completedEncounters,
-  })  : flags = flags ?? <String>{},
-        stats = stats ?? <String, int>{},
-        resources = resources ?? <String, int>{},
-        completedEncounters = completedEncounters ?? <String>[];
+  }) : flags = flags ?? <String>{},
+       stats = stats ?? <String, int>{},
+       resources = resources ?? <String, int>{},
+       completedEncounters = completedEncounters ?? <String>[];
 
   final Set<String> flags;
   final Map<String, int> stats;

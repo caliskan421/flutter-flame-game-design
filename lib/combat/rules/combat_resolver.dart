@@ -4,7 +4,7 @@
 //  boss.dart'taki `_resolveContact` "hangi savunma aracı + zamanlama doğru mu?"
 //  kararını buraya, SAF bir fonksiyona çeker. Flame/Sfx/popup çağırmaz; yalnız
 //  girdi → `ContactDecision` döndürür. Oyuncunun saf timing kuralları
-//  (`Player.parrySucceeds`) burada KULLANILIR (taşınmaz, çağrılır).
+//  (`PlayerTimingRules.parrySucceeds`) burada KULLANILIR.
 //
 //  Davranış-koruyan: boss._resolveContact'taki dallanma birebir buradadır;
 //  boss yalnız kararı uygular (ilgili handler'ı çağırır). Bu sayede temas
@@ -15,8 +15,8 @@
 // ============================================================================
 import 'dart:math';
 
-import '../../characters.dart';
-import '../../player.dart';
+import 'package:boss_parry_arena/combat/data/characters.dart';
+import 'package:boss_parry_arena/combat/rules/player_timing_rules.dart';
 
 /// Temas çözümünün hangi handler'a gideceği.
 enum ContactAction {
@@ -55,13 +55,14 @@ class CombatResolver {
 
     // Gerçek i-frame her saldırıyı geçersiz kılar AMA tracking (saplama/takip)
     // hariç: o, dokunulmazlığı delip yalnız parry ile karşılanır.
-    final iFrameBeats = playerInvulnerable && defense != DefenseProfile.tracking;
+    final iFrameBeats =
+        playerInvulnerable && defense != DefenseProfile.tracking;
     if (iFrameBeats) return const ContactDecision(ContactAction.dodgeSuccess);
 
     // Parry penceresi: beat penceresi ile oyuncunun (spam ile daralmış olabilen)
     // penceresinin küçüğü — spam decay başarıyı gerçekten daraltır.
     final effWindow = min(beatPreWindow, effectiveParryWindow);
-    final pressedParry = Player.parrySucceeds(sinceParry, effWindow);
+    final pressedParry = PlayerTimingRules.parrySucceeds(sinceParry, effWindow);
     final didParry = pressedParry && guardMatches;
     // triedDodge yalnız feedback için: dodge'a bastı ama i-frame'i ıskaladı.
     final triedDodge = sinceDodge <= dodgePre;

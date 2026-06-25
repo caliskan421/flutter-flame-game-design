@@ -15,7 +15,7 @@
 
 import 'dart:math';
 
-import '../../characters.dart';
+import 'package:boss_parry_arena/combat/data/characters.dart';
 
 /// `adaptBeat` sonucu: uygulanacak override beat + bunun tam-parry sayımını
 /// (nonFeint) azaltıp azaltmadığı (yalnız feint dönüşümünde azalır).
@@ -36,7 +36,11 @@ class BossBrain {
   }
 
   /// Oyuncunun son davranışını alışkanlığa işle (yükselen EMA).
-  void registerHabit({bool parry = false, bool dodge = false, bool attack = false}) {
+  void registerHabit({
+    bool parry = false,
+    bool dodge = false,
+    bool attack = false,
+  }) {
     if (parry) parryHabit = (parryHabit + 0.34).clamp(0, 1).toDouble();
     if (dodge) dodgeHabit = (dodgeHabit + 0.34).clamp(0, 1).toDouble();
     if (attack) attackHabit = (attackHabit + 0.30).clamp(0, 1).toDouble();
@@ -46,7 +50,9 @@ class BossBrain {
   void decay(double dt) {
     parryHabit = (parryHabit - parryHabit * dt * 0.22).clamp(0, 1).toDouble();
     dodgeHabit = (dodgeHabit - dodgeHabit * dt * 0.22).clamp(0, 1).toDouble();
-    attackHabit = (attackHabit - attackHabit * dt * 0.22).clamp(0, 1).toDouble();
+    attackHabit = (attackHabit - attackHabit * dt * 0.22)
+        .clamp(0, 1)
+        .toDouble();
   }
 
   /// Kombo havuzundan ağırlıklı seçim. Oyuncu dodge'a abanıyorsa tracking içeren

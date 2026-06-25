@@ -134,13 +134,15 @@ void main() {
     });
 
     test('fighter files read behavior from action systems', () {
-      final playerSource = File('lib/player.dart').readAsStringSync();
+      final playerSource = File(
+        'lib/combat/sim/player.dart',
+      ).readAsStringSync();
       // Faz F: boss davranışı boss.dart + `part of` modüllerine bölündü; AI/
       // temas/state-machine kodu artık part dosyalarında. Invariant (boss
       // game.testMode ile dallanmaz, davranışı game.actionSystem'den okur) bu
       // dosyaların TÜMÜ için geçerli olmalı.
       final bossSources = <String>[
-        File('lib/boss.dart').readAsStringSync(),
+        File('lib/combat/sim/boss.dart').readAsStringSync(),
         File('lib/combat/sim/boss_state_machine.dart').readAsStringSync(),
         File('lib/combat/sim/deathblow_controller.dart').readAsStringSync(),
         File('lib/combat/sim/boss_combat.dart').readAsStringSync(),

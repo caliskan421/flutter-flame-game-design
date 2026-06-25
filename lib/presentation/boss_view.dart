@@ -12,10 +12,10 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-import '../boss.dart';
-import '../characters.dart';
-import '../sprite_strip.dart';
-import '../theme.dart';
+import 'package:boss_parry_arena/combat/data/characters.dart';
+import 'package:boss_parry_arena/combat/sim/boss.dart';
+import 'package:boss_parry_arena/presentation/sprite_strip.dart';
+import 'package:boss_parry_arena/presentation/theme.dart';
 import 'animation_binding.dart';
 
 // mikiri/thrust telegrafı (kırmızıdan ayrı) — sunum rengi.

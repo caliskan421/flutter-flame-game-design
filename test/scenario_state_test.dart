@@ -49,17 +49,20 @@ void main() {
       expect(s.completedEncounters, isEmpty);
     });
 
-    test('applyScenarioEffect: durum-mutasyonu efektleri uygular, StartCombat no-op', () {
-      final s = ScenarioState();
-      applyScenarioEffect(const SetFlag('boss_knight_1_defeated'), s);
-      applyScenarioEffect(const GiveResource('honor', 1), s);
-      applyScenarioEffect(const SetStat('stealth', 4), s);
-      applyScenarioEffect(const StartCombat('knight_1'), s); // no-op
-      expect(s.hasFlag('boss_knight_1_defeated'), isTrue);
-      expect(s.resource('honor'), 1);
-      expect(s.stat('stealth'), 4);
-      // StartCombat ScenarioState'i değiştirmez
-      expect(s.flags.length, 1);
-    });
+    test(
+      'applyScenarioEffect: durum-mutasyonu efektleri uygular, StartCombat no-op',
+      () {
+        final s = ScenarioState();
+        applyScenarioEffect(const SetFlag('boss_knight_1_defeated'), s);
+        applyScenarioEffect(const GiveResource('honor', 1), s);
+        applyScenarioEffect(const SetStat('stealth', 4), s);
+        applyScenarioEffect(const StartCombat('knight_1'), s); // no-op
+        expect(s.hasFlag('boss_knight_1_defeated'), isTrue);
+        expect(s.resource('honor'), 1);
+        expect(s.stat('stealth'), 4);
+        // StartCombat ScenarioState'i değiştirmez
+        expect(s.flags.length, 1);
+      },
+    );
   });
 }

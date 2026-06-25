@@ -1,4 +1,4 @@
-part of '../../boss.dart';
+part of 'boss.dart';
 
 // Faz F: boss.dart god-object'inden `part of` ile aynı kütüphanede ayrıştırıldı.
 // Davranış-koruyan saf TAŞIMA: alanlar/statikler Boss'ta kalır, metodlar bu
@@ -210,13 +210,17 @@ extension BossStateMachine on Boss {
         _nonFeintTotal > 0 &&
         _parriedThisCombo >= _nonFeintTotal) {
       final bonus = (_activeCombo ?? def.pattern).staggerBonus;
-      game.bus.emit(ComboTextRequested(_topCenter, '×$_parriedThisCombo  TAM PARRY'));
-      game.bus.emit(PopupRequested(
-        _topCenter + Vector2(0, 34),
-        '-$bonus DENGE',
-        fontSize: 18,
-        color: kBarBlue,
-      ));
+      game.bus.emit(
+        ComboTextRequested(_topCenter, '×$_parriedThisCombo  TAM PARRY'),
+      );
+      game.bus.emit(
+        PopupRequested(
+          _topCenter + Vector2(0, 34),
+          '-$bonus DENGE',
+          fontSize: 18,
+          color: kBarBlue,
+        ),
+      );
       applyPostureDamage(bonus);
       if (state == BossState.staggered) return; // kırıldı → stagger sürüyor
       _hurtT = 0.3;
