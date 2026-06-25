@@ -19,11 +19,13 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
 import 'characters.dart';
+import 'combat/ai/boss_brain.dart';
 import 'combat/rules/combat_event.dart';
 import 'combat/rules/combat_resolver.dart';
+import 'combat/sim/posture_system.dart';
 import 'game.dart';
 import 'player.dart';
-import 'presentation/animation_binding.dart';
+import 'presentation/boss_view.dart';
 import 'projectile.dart';
 import 'sprite_strip.dart';
 import 'theme.dart';
@@ -58,11 +60,12 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   double displayHealth = 100;
 
   // --- POSTURE (denge) ---
-  late final int maxPosture = def.maxPosture;
-  late double posture = maxPosture.toDouble();
-  late double displayPosture = maxPosture.toDouble();
-  double _postureIdle = 0; // son denge hasarından bu yana (regen gecikmesi)
-  static const double postureRegen = 8; // /s
+  // Denge durumu/kuralları saf PostureSystem'de (Faz F). Aşağıdaki getter'lar
+  // eski public alanları (HUD okur) birebir korur.
+  late final PostureSystem _posture = PostureSystem(def.maxPosture);
+  int get maxPosture => _posture.max;
+  double get posture => _posture.value;
+  double get displayPosture => _posture.display;
   // Denge kırılınca boss bu kadar açık kalır = DEATHBLOW (infaz) penceresi.
   // Oyuncunun F ile birkaç hafif kesik veya G ile ağır infaz seçmesine yetecek
   // kadar geniş; süre dolarsa boss toparlanır (Sekiro deathblow penceresi hissi).
@@ -132,14 +135,26 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   static const int attackHpStaggeredLight = 15; // denge kırıkken F kesikleri
   static const int attackPostureChip = 8; // boss açık değilken (riskli poke)
 
-  // --- ADAPTASYON: oyuncu alışkanlık EMA'ları (0..1) ---
-  double _parryHabit = 0, _dodgeHabit = 0, _attackHabit = 0;
-
+  // --- ADAPTASYON / AI: saf karar çekirdeği (alışkanlık EMA'ları, kombo seçimi,
+  //     beat adaptasyonu, greed-punish kararı) BossBrain'de (Faz F). _rng burada
+  //     paylaşılır → tüm rastgele çağrıların SIRASI birebir korunur.
+  final BossBrain _brain = BossBrain();
   final Random _rng = Random();
 
   // --- SPRITE ---
   late final SpriteStripBank _sprites = SpriteStripBank(def);
   Sprite? _portrait;
+
+  // --- GÖRSEL SUNUM (Faz F: render presentation/boss_view.dart'a taşındı) ---
+  // BossView yalnız aşağıdaki salt-okunur durumu okuyup çizer (tek-yön bağımlılık).
+  late final BossView _view = BossView(this);
+  SpriteStripBank get sprites => _sprites;
+  double get t => _t; // render animasyon saati
+  double get hurtT => _hurtT;
+  double get timer => _timer;
+  double get deathT => _deathT;
+  double get deathFrameTime => _deathFrameTime;
+  double get phaseTransitionHurtHold => _phaseTransitionHurtHold;
 
   Sprite? get portraitSprite => _portrait;
   int get currentBeatIndex => _beatIndex;
@@ -183,9 +198,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   void reset() {
     health = 100;
     displayHealth = 100;
-    posture = maxPosture.toDouble();
-    displayPosture = maxPosture.toDouble();
-    _postureIdle = 0;
+    _posture.reset();
     deathblowsDone = 0;
     _lastPhase = phase;
     storedCombo = 0;
@@ -212,7 +225,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _pendingBeat = null;
     _pendingProjectile = null;
     _hurtT = 0;
-    _parryHabit = _dodgeHabit = _attackHabit = 0;
+    _brain.reset();
     dying = false;
     deathDone = false;
     _deathT = 0;
@@ -256,7 +269,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _activeCombo = null;
     _beatIndex = -1;
     _guardCounter = false;
-    posture = maxPosture.toDouble();
+    _posture.forceFull();
     position.x = _basePos.x;
     _enter(BossState.guard, testGuardDuration);
   }
@@ -266,15 +279,17 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
 
   // --- POSTURE API ---
   void applyPostureDamage(int dmg) {
-    if (dmg <= 0 || dying) return;
-    posture = (posture - dmg).clamp(0, maxPosture).toDouble();
-    _postureIdle = 0;
-    if (posture <= 0 && state != BossState.staggered) breakPosture();
+    final broke = _posture.applyDamage(
+      dmg,
+      dying: dying,
+      staggered: state == BossState.staggered,
+    );
+    if (broke) breakPosture();
   }
 
   void breakPosture() {
     if (dying) return;
-    posture = 0;
+    _posture.onBroken();
     _clearPending();
     game.bus.emit(const PostureBroken());
     game.bus.emit(ComboTextRequested(_topCenter, 'DENGE KIRILDI'));
@@ -295,12 +310,10 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _t += dt;
     if (_hurtT > 0) _hurtT -= dt;
     displayHealth += (health - displayHealth) * (dt * 8).clamp(0, 1);
-    displayPosture += (posture - displayPosture) * (dt * 9).clamp(0, 1);
+    _posture.tickDisplay(dt);
 
     // Alışkanlık EMA'ları yavaşça söner.
-    _parryHabit = (_parryHabit - _parryHabit * dt * 0.22).clamp(0, 1);
-    _dodgeHabit = (_dodgeHabit - _dodgeHabit * dt * 0.22).clamp(0, 1);
-    _attackHabit = (_attackHabit - _attackHabit * dt * 0.22).clamp(0, 1);
+    _brain.decay(dt);
     _tickQueuedDeathblowImpact(dt);
     if (_followUpTimer > 0) {
       _followUpTimer -= dt;
@@ -329,12 +342,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
         }
       }
       // Posture rejenerasyonu: stagger DIŞINDA, kısa gecikmeden sonra.
-      _postureIdle += dt;
-      if (state != BossState.staggered &&
-          _postureIdle > 1.1 &&
-          posture < maxPosture) {
-        posture = (posture + postureRegen * dt).clamp(0, maxPosture).toDouble();
-      }
+      _posture.tickRegen(dt, staggered: state == BossState.staggered);
       _timer -= dt;
       _machine(dt);
       _tickPending(dt);
@@ -377,11 +385,8 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     bool parry = false,
     bool dodge = false,
     bool attack = false,
-  }) {
-    if (parry) _parryHabit = (_parryHabit + 0.34).clamp(0, 1);
-    if (dodge) _dodgeHabit = (_dodgeHabit + 0.34).clamp(0, 1);
-    if (attack) _attackHabit = (_attackHabit + 0.30).clamp(0, 1);
-  }
+  }) =>
+      _brain.registerHabit(parry: parry, dodge: dodge, attack: attack);
 
   // ------------------------------------------------------------------ MACHINE
   void _machine(double dt) {
@@ -458,7 +463,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
       case BossState.staggered:
         // DEATHBLOW penceresi: oyuncu infaz etmezse süre dolunca toparlanır.
         if (_timer <= 0) {
-          posture = maxPosture.toDouble();
+          _posture.forceFull();
           _beatIndex = -1;
           _activeCombo = null;
           _decidePressure();
@@ -475,7 +480,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
               .toDouble();
         }
         if (_timer <= 0) {
-          posture = maxPosture.toDouble();
+          _posture.forceFull();
           _beatIndex = -1;
           _activeCombo = null;
           _decidePressure();
@@ -525,37 +530,8 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   }
 
   // Kombo havuzundan seçim. Oyuncu dodge'a abanıyorsa tracking içeren deseni,
-  // parry'e abanıyorsa feint/guardBreak/delayed içeren deseni öne çıkar.
-  ComboPattern _pickCombo() {
-    final avail = def.combos.where((c) => c.minPhase <= phase).toList();
-    if (avail.isEmpty) return def.combos.first;
-    if (avail.length == 1) return avail.first;
-
-    double weightOf(ComboPattern c) {
-      double w = c.weight;
-      final hasTracking = c.beats.any(
-        (b) => b.defense == DefenseProfile.tracking,
-      );
-      final hasAntiParry = c.beats.any(
-        (b) =>
-            b.defense == DefenseProfile.feint ||
-            b.defense == DefenseProfile.guardBreak ||
-            b.defense == DefenseProfile.delayed,
-      );
-      if (hasTracking) w *= 1 + _dodgeHabit * 1.6;
-      if (hasAntiParry) w *= 1 + _parryHabit * 1.6;
-      return w;
-    }
-
-    final weights = avail.map(weightOf).toList();
-    final total = weights.fold<double>(0, (s, w) => s + w);
-    double r = _rng.nextDouble() * total;
-    for (int i = 0; i < avail.length; i++) {
-      r -= weights[i];
-      if (r <= 0) return avail[i];
-    }
-    return avail.last;
-  }
+  // parry'e abanıyorsa feint/guardBreak/delayed içeren deseni öne çıkar (BossBrain).
+  ComboPattern _pickCombo() => _brain.pickCombo(def.combos, phase, _rng);
 
   void _startBeat(int i) {
     _beatIndex = i;
@@ -581,30 +557,23 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   // Parry'ye abanan → ALDATMA tuzağı (erken parry'yi boşa düşür, arkadan punish);
   // dodge'a abanan → TRACKING (dodge'u yakalar, parry zorunlu).
   void _adaptBeat(int i) {
+    // Boss tarafı kapılar: ayar kapalıysa veya bu kombo zaten dönüştürüldüyse çık
+    // (rng burada TÜKETİLMEZ). Karar + rng tüketimi BossBrain'de.
     if (!game.actionSystem.bossInComboAdapt || _adaptedThisCombo) return;
-    final base = activeBeats[i];
-    if (base.defense != DefenseProfile.normal || base.isRanged) return;
-    if (_rng.nextDouble() > game.actionSystem.inComboAdaptChance) return;
-
-    final parryLean = _recentParries + _parryHabit * 2;
-    final dodgeLean = _recentDodges + _dodgeHabit * 2;
-    final isLast = i >= activeBeats.length - 1;
-
-    if (parryLean >= 1.4 && parryLean >= dodgeLean && !isLast) {
-      // Feint son beat olamaz: tuzaktan sonra punish edecek gerçek beat gerekir.
-      _beatOverrides[i] = base.copyWith(
-        kind: BeatKind.feint,
-        defense: DefenseProfile.feint,
-        damage: 0,
-        postureDamage: 0,
-        punishOnDodge: false,
-      );
-      if (_nonFeintTotal > 0) _nonFeintTotal--; // feint tam-parry'ye sayılmaz
-      _adaptedThisCombo = true;
-    } else if (dodgeLean >= 1.4 && dodgeLean > parryLean) {
-      _beatOverrides[i] = base.copyWith(defense: DefenseProfile.tracking);
-      _adaptedThisCombo = true;
+    final adapt = _brain.adaptBeat(
+      base: activeBeats[i],
+      isLast: i >= activeBeats.length - 1,
+      recentParries: _recentParries,
+      recentDodges: _recentDodges,
+      adaptChance: game.actionSystem.inComboAdaptChance,
+      rng: _rng,
+    );
+    if (adapt == null) return;
+    _beatOverrides[i] = adapt.beat;
+    if (adapt.reducesNonFeint && _nonFeintTotal > 0) {
+      _nonFeintTotal--; // feint tam-parry'ye sayılmaz
     }
+    _adaptedThisCombo = true;
   }
 
   // Kombo bitti. Tüm (feint olmayan) beat'ler parry edildiyse büyük posture
@@ -707,7 +676,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     _activeCombo = null;
     _guardCounter = false;
     _phaseTransitionHurtHold = hurtHold;
-    posture = maxPosture.toDouble();
+    _posture.forceFull();
     position.x = _basePos.x;
     // Sinematik: kükreme + orta sarsıntı + kısa slow-mo + uyarı yazısı.
     final label = phase >= 2 ? 'III. FAZ' : 'II. FAZ';
@@ -806,7 +775,7 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
     final next = health > 50 ? 50 : (health > 25 ? 25 : 1);
     if (health > next) takeDamage(health - next);
     game.bus.emit(DamageApplied(hpBefore - health, toBoss: true));
-    posture = maxPosture.toDouble();
+    _posture.forceFull();
     _hurtT = 0.3;
     if (game.actionSystem.bossPhaseStaging) {
       _lastPhase = phase;
@@ -1352,8 +1321,13 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   bool _maybeGreedPunish() {
     if (!game.actionSystem.bossGreedPunish || dying) return false;
     if (state == BossState.phaseTransition) return false;
-    final chance = game.actionSystem.greedPunishChance * (1 + phase * 0.25);
-    if (_rng.nextDouble() > chance) return false;
+    if (!_brain.greedPunishRoll(
+      game.actionSystem.greedPunishChance,
+      phase,
+      _rng,
+    )) {
+      return false;
+    }
     game.bus.emit(const MetricRecorded(MetricKind.greedPunished));
     game.bus.emit(ComboTextRequested(_topCenter, 'AÇGÖZLÜ!'));
     game.bus.emit(const SfxRequested(SfxCue.whiff));
@@ -1461,221 +1435,8 @@ class Boss extends PositionComponent with HasGameReference<BossArenaGame> {
   }
 
   // -------------------------------------------------------------- SPRITE PICK
-  Sprite _frameFor() {
-    if (dying) return _sprites.deathFrame(_deathT, _deathFrameTime);
-    switch (state) {
-      case BossState.idle:
-      case BossState.gap:
-        return _sprites.loop('idle', _t, 0.10);
-      case BossState.guard:
-        return _sprites.frames('defend').last;
-      case BossState.approach:
-        if (game.actionSystem.bossUsesIdleApproachSprite) {
-          return _sprites.loop('idle', _t, 0.10);
-        }
-        return _sprites.loop('walk', _t, 0.09);
-      case BossState.reposition:
-        return _sprites.loop('walk', _t, 0.09);
-      case BossState.retreat:
-        return _sprites.loop('run', _t, 0.07);
-      case BossState.offBalance:
-      case BossState.staggered:
-        return _sprites.loop('hurt', _t, 0.12);
-      case BossState.phaseTransition:
-        if (_phaseTransitionHurtHold > 0) {
-          return _sprites.loop('hurt', _t, 0.12);
-        }
-        // Dirilme/poz alma: savunma duruşunu tut (kısa staging).
-        return _sprites.frames('defend').last;
-      case BossState.windup:
-        return _sprites.attackFrame(
-          _beat.animKey,
-          _timer,
-          _beat.windup,
-          phase: AttackPhase.windup,
-          binding: resolveAnimationBinding(_beat.animationBindingId),
-        );
-      case BossState.active:
-        if (_hurtT > 0) return _sprites.loop('hurt', _t, 0.08);
-        return _sprites.attackFrame(
-          _beat.animKey,
-          _timer,
-          _beat.active,
-          phase: AttackPhase.active,
-          binding: resolveAnimationBinding(_beat.animationBindingId),
-        );
-      case BossState.recover:
-        if (_hurtT > 0) return _sprites.loop('hurt', _t, 0.08);
-        return _sprites.attackFrame(
-          _beat.animKey,
-          _timer,
-          _beat.recover,
-          phase: AttackPhase.recover,
-          binding: resolveAnimationBinding(_beat.animationBindingId),
-        );
-    }
-  }
-
   @override
-  void render(Canvas canvas) {
-    if (!_sprites.isLoaded) return;
+  void render(Canvas canvas) => _view.render(canvas);
 
-    final sprite = _frameFor();
-    final s = def.cellPx;
-    final left = size.x / 2 - s / 2;
-    final top = size.y - def.feetV * s;
-
-    final mirror = game.player.position.x < position.x;
-    canvas.save();
-    if (mirror) {
-      canvas.translate(size.x, 0);
-      canvas.scale(-1, 1);
-    }
-    sprite.render(canvas, position: Vector2(left, top), size: Vector2(s, s));
-    canvas.restore();
-
-    _renderTelegraph(canvas);
-    _renderOpenMarker(canvas);
-  }
-
-  // TELEGRAF — SADE MODEL: yalnız KIRMIZI (kaçılması gereken) saldırıyı işaretler.
-  // Renksiz = parry (varsayılan). Kırmızı görürsen DODGE. Tek istisna budur.
-  void _renderTelegraph(Canvas canvas) {
-    if (state != BossState.windup && state != BossState.active) return;
-    final beat = currentBeat;
-    if (beat == null) return;
-    final String label;
-    final Color color;
-    if (beat.defense == DefenseProfile.guardBreak) {
-      label = 'KAÇ!  (SHIFT)';
-      color = kBarRed;
-    } else if (beat.defense == DefenseProfile.thrust) {
-      label = 'MİKİRİ!  (SHIFT)';
-      color = _kThrust;
-    } else if (beat.guardDirection == GuardDirection.high &&
-        game.actionSystem.upArrowParries) {
-      label = beat.defense == DefenseProfile.tracking
-          ? '↑ SAVUŞTUR'
-          : '↑ / SHIFT';
-      color = kBarBlue;
-    } else if (beat.guardDirection == GuardDirection.low &&
-        game.actionSystem.downArrowParries) {
-      label = beat.defense == DefenseProfile.tracking
-          ? '↓ SAVUŞTUR'
-          : '↓ / SHIFT';
-      color = kBarBlue;
-    } else if (beat.defense == DefenseProfile.tracking &&
-        beat.guardDirection == GuardDirection.any) {
-      label = 'SPACE SAVUŞTUR';
-      color = kBarBlue;
-    } else {
-      return;
-    }
-
-    final pulse = 0.55 + 0.45 * sin(_t * 18);
-    final tp = TextPaint(
-      style: TextStyle(
-        color: color,
-        fontSize: 14,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1,
-      ),
-    );
-    final m = tp.getLineMetrics(label);
-    // Sprite başı ~ y=-(cellPx - 112). Pili onun da üstüne, net bir bantta koy.
-    final double cy = -(def.cellPx - size.y) - 22;
-    final double pillW = m.width + 22;
-    final pill = Rect.fromCenter(
-      center: Offset(size.x / 2, cy),
-      width: pillW,
-      height: 24,
-    );
-    final rr = RRect.fromRectAndRadius(pill, const Radius.circular(5));
-    canvas.drawRRect(rr, Paint()..color = kWhite.withAlpha(235));
-    canvas.drawRRect(
-      rr,
-      Paint()
-        ..color = color.withAlpha((150 + 105 * pulse).toInt())
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5,
-    );
-    tp.render(canvas, label, Vector2(size.x / 2 - m.width / 2, cy - 7));
-  }
-
-  void _renderOpenMarker(Canvas canvas) {
-    if (!isOpen) return;
-    // Denge kırık → F çoklu kesik + G infaz; dodge sonrası açık → normal "VUR".
-    final bool deathblow = state == BossState.staggered;
-    final pulse = 0.5 + 0.5 * sin(_t * (deathblow ? 22 : 16));
-    final infl = (deathblow ? 7 : 5) + pulse * (deathblow ? 7 : 5);
-    final Color ring = deathblow ? kBarRed : kBlack;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        size.toRect().inflate(infl),
-        const Radius.circular(10),
-      ),
-      Paint()
-        ..color = ring.withAlpha((150 + 105 * pulse).toInt())
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = deathblow ? 4 : 3,
-    );
-    final String label = deathblow ? 'F:15  G:İNFAZ' : 'VUR  F';
-    final tp = TextPaint(
-      style: TextStyle(
-        color: deathblow ? kBarRed : kBarGreen,
-        fontSize: deathblow ? 15 : 16,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 2,
-      ),
-    );
-    final m = tp.getLineMetrics(label);
-    final double cy = -(def.cellPx - size.y) - 22;
-    final pill = Rect.fromCenter(
-      center: Offset(size.x / 2, cy),
-      width: m.width + 22,
-      height: 24,
-    );
-    final rr = RRect.fromRectAndRadius(pill, const Radius.circular(5));
-    canvas.drawRRect(rr, Paint()..color = kWhite.withAlpha(235));
-    canvas.drawRRect(
-      rr,
-      Paint()
-        ..color = (deathblow ? kBarRed : kBarGreen).withAlpha(
-          (150 + 105 * pulse).toInt(),
-        )
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = deathblow ? 3 : 2.5,
-    );
-    tp.render(canvas, label, Vector2(size.x / 2 - m.width / 2, cy - 7));
-  }
-
-  String get phaseLabelTr {
-    if (dying) return 'Devrildi';
-    switch (state) {
-      case BossState.idle:
-        return 'Bekliyor';
-      case BossState.approach:
-        return 'Yaklaşıyor';
-      case BossState.windup:
-        return 'Hazırlanıyor';
-      case BossState.active:
-        return 'VURUYOR';
-      case BossState.recover:
-        return 'Toparlanıyor';
-      case BossState.gap:
-        return 'Ara';
-      case BossState.guard:
-        return 'KALKAN';
-      case BossState.offBalance:
-        return 'AÇIK!';
-      case BossState.staggered:
-        return 'İNFAZ FIRSATI';
-      case BossState.phaseTransition:
-        return 'FAZ DEĞİŞİYOR';
-      case BossState.reposition:
-        return 'Yer değiştiriyor';
-      case BossState.retreat:
-        return 'Geri çekiliyor';
-    }
-  }
+  String get phaseLabelTr => _view.phaseLabelTr;
 }

@@ -121,7 +121,7 @@ lib/
 | C | ✅ Bitti | ActionTimeline+PlayerMoveDef; parry/dodge/light/heavy süreleri veriden (tek kaynak k* sabitleri); _atkTotal=timeline.duration, dodgeInvulnerableAt=isIn(iframe). Davranış birebir. analyze temiz, 100 test yeşil. Not: low-parry penceresi ayrı model olarak Faz D'ye bırakıldı. |
 | D | ✅ Bitti | AnimationBinding+markerFrames+HitboxSpec; sprite_strip.attackFrame binding okur (contact karesi VERİDE), binding/sheetKey yoksa eski mid=n/2 fallback. knight_1 (kTestOpponent) attack1/2/3 binding'li, contact==mid → görsel birebir; samuray (kPlayerDef) binding'leri C yer tutucularını çözer (render `once` ile lineer, değişmedi). analyze temiz, 111 test yeşil. D5 (marker→event) opsiyonel, sonraki faza ertelendi. |
 | E | ✅ Bitti | NormalActionSystem gerçek maça bağlı: 'MAÇ (NORMAL)' → BossSelectOverlay (kOpponents) → startNormalMatch (const NormalActionSystem, tek-yer set) → getter-tabanlı win/loss (minPlayerHealth/minBossHealth + canDie) → retry (aynı boss) / menü. GameSession seçilen boss id + sonuç tutar (saf domain). Test sandbox birebir korundu. analyze temiz, 119 test yeşil. |
-| F | ⬜ Başlamadı | B'ye bağlı (C/D sonrası önerilir) |
+| F | 🟡 Kısmi | F1 PostureSystem + F2 BossBrain (saf, Flame'siz unit testli; seedli Rng boss'ta paylaşılır) + F6 BossView (render→presentation) çıkarıldı. boss.dart 1681→1442 sat. analyze temiz, 141 test yeşil (22 yeni). game.actionSystem invariant'ı korundu. **Kalan:** F3 resolver tamamlama, F4 deathblow, F5 state machine, F7 ~500 hedefi — ~30 ortak private alan paylaşan bağlı çekirdek; ayrı artışta. |
 | G | ⬜ Başlamadı | E+F'ye bağlı |
 | H | ⬜ Başlamadı | G'ye bağlı |
 

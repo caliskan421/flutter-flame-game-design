@@ -1,6 +1,6 @@
 # FAZ F — `boss.dart` Ayrıştırma (God object'i böl)
 
-> **Durum:** ⬜ Başlamadı
+> **Durum:** 🟡 Kısmi — F1 (PostureSystem), F2 (BossBrain), F6 (BossView) bitti; F3/F4/F5/F7 (bağlı çekirdek) kaldı. boss.dart 1681→1442 sat, analyze temiz, 141 test yeşil.
 > **Bağımlılık:** **Faz B şart** (resolver + event yolu). C/D bitmiş olması `boss_view` ayrımını çok kolaylaştırır (önerilen: C/D sonrası).
 > **Tür:** Saf refactor — davranış DEĞİŞMEZ. En büyük dosya tek tek bölünür.
 > **Referans:** `doc/architecture.md` §9 (ayrıştırma haritası — bu fazın ana planı), §4 (D1), §10 (klasör).
@@ -44,14 +44,16 @@ Her birim **ayrı, küçük, derlenir-test-geçer commit** olarak çıkarılır.
 
 ## 4. Adım adım görevler
 
-- [ ] **F1 — PostureSystem.** `posture`, `displayPosture`, `applyPostureDamage`, `breakPosture`, regen mantığını `PostureSystem`'e taşı. `breakPosture` artık `PostureBroken` event'i döner/yayar (Faz B presenter sunar). `boss.dart` delege eder. Test: posture 0 → break; regen gecikmesi.
-- [ ] **F2 — BossBrain.** `_pickCombo`/`_adaptBeat`/habit EMA'ları/greed+guardBreak kararını saf `BossBrain`'e taşı. **Rng enjekte et** (architecture.md §16 ilke 9: seedli rastgelelik → deterministik test). `ArenaActionSystem` ayarlarını (inComboAdaptChance, greedPunishChance vb. — action_system.dart:94,99) parametre olarak al.
+- [x] **F1 — PostureSystem.** ✅ `posture`/`displayPosture`/`maxPosture` artık boss'ta getter; durum+kurallar `lib/combat/sim/posture_system.dart`'ta (saf). `applyPostureDamage` → `_posture.applyDamage(...)` "kırıldı mı?" döner; kırılma EFEKTLERİ + `staggered` geçişi boss'ta kaldı (tek-yön). `forceFull`/`reset`/`tickRegen`/`tickDisplay` delege. Test: `test/posture_system_test.dart` (10).
+- [x] **F2 — BossBrain.** ✅ `_pickCombo`/`_adaptBeat`/habit EMA/greed kararı → `lib/combat/ai/boss_brain.dart` (saf, yalnız `characters.dart`). **Rng enjekte:** boss tek `_rng`'i paylaşır, brain metodlarına param geçer → global çağrı sırası birebir; testte seedli `Random`. `adaptBeat` `BeatAdaptation?` döner (override + nonFeint azalt). guardBreak punish olasılıksız olduğundan boss'ta kaldı. Test: `test/boss_brain_test.dart` (12, seedli). NOT: action-system ayarları param olarak veriliyor (inComboAdaptChance/greedPunishChance).
 - [ ] **F3 — CombatResolver tamamla.** Faz B'de başlayan resolver'a `_resolveFeint`/`_guardMatches`/`_iFrameBeats`/`_tickPending` çekirdeğini taşı; hepsi `CombatEvent` üretir, `Sfx`/`spawnPopup` çağırmaz.
 - [ ] **F4 — DeathblowController.** `_performDeathblow`/`_resolveDeathblowImpact`/faz geçişi mantığını taşı; `Deathblow`/`PhaseChanged` event'leri yayar; slow-mo/vignette/sfx presenter'da.
 - [ ] **F5 — BossStateMachine.** `_machine`/`_enter`/`_startBeat`/`_beginNewCombo`/`_endCombo`/`_decidePressure`'ı taşı; brain + resolver + posture + deathblow'u koordine et. Timer/state burada.
-- [ ] **F6 — BossView.** render/telegraf/open-marker/`phaseLabelTr`'yi `presentation/boss_view.dart`'a taşı. (C/D bittiyse `AnimationBinding` ile beslenir.)
-- [ ] **F7 — boss.dart ince component.** Kalan `boss.dart`: alt sistemleri kurar, `update`'te sırayla tikletir, event köprüsünü tutar. Hedef ~500 satır.
-- [ ] **F8 — Her adımda test + analyze + duman.** Her birim çıkarımından sonra `flutter test` yeşil; davranış birebir (AI agresifliği, posture kırılması, deathblow sineması, faz geçişi).
+- [x] **F6 — BossView.** ✅ `_frameFor`/`render`/`_renderTelegraph`/`_renderOpenMarker`/`phaseLabelTr` → `lib/presentation/boss_view.dart`. View yalnız boss'u salt-okunur getter'larla (sprites/t/hurtT/timer/deathT/deathFrameTime/phaseTransitionHurtHold + mevcut public) okur, durumu değiştirmez. `Boss.render` (@override) ve `phaseLabelTr` delege eder. `AnimationBinding` (Faz D) view'da çözülür.
+- [ ] **F7 — boss.dart ince component.** (Kalan) Hedef ~500 satır. Şu an 1442; F3/F4/F5 bağlı çekirdek çıkmadan ulaşılmaz.
+- [ ] **F8 — Her adımda test + analyze + duman.** (Kısmen) F1/F2/F6 sonrası analyze temiz, 141 test yeşil; davranış-koruma yapısal incelemeyle doğrulandı. Elle duman testi kullanıcıya kaldı.
+
+> **Kalan bağlı çekirdek (sonraki artış):** F3 (`_resolveFeint`/`_guardMatches`/`_iFrameBeats`/`_tickPending` → resolver), F4 (`_performDeathblow`/`_resolveDeathblowImpact`/faz geçişi → deathblow_controller), F5 (`_machine`/`_enter`/`_startBeat`/`_beginNewCombo`/`_endCombo`/`_decidePressure` → state machine). Bunlar ~30 ortak `_`-alan paylaşır; davranış-koruyan çıkarım için ya alanları açmak ya `part of` ile aynı kütüphanede bölmek gerekir — ayrı, dikkatli oturum.
 
 ## 5. Kabul kriterleri
 - `boss.dart` ~500 satıra iner; AI/kural/posture/deathblow/render ayrı dosyalarda.
