@@ -135,12 +135,24 @@ void main() {
 
     test('fighter files read behavior from action systems', () {
       final playerSource = File('lib/player.dart').readAsStringSync();
-      final bossSource = File('lib/boss.dart').readAsStringSync();
+      // Faz F: boss davranışı boss.dart + `part of` modüllerine bölündü; AI/
+      // temas/state-machine kodu artık part dosyalarında. Invariant (boss
+      // game.testMode ile dallanmaz, davranışı game.actionSystem'den okur) bu
+      // dosyaların TÜMÜ için geçerli olmalı.
+      final bossSources = <String>[
+        File('lib/boss.dart').readAsStringSync(),
+        File('lib/combat/sim/boss_state_machine.dart').readAsStringSync(),
+        File('lib/combat/sim/deathblow_controller.dart').readAsStringSync(),
+        File('lib/combat/sim/boss_combat.dart').readAsStringSync(),
+      ];
+      final bossCombined = bossSources.join('\n');
 
       expect(playerSource, isNot(contains('game.testMode')));
-      expect(bossSource, isNot(contains('game.testMode')));
+      for (final src in bossSources) {
+        expect(src, isNot(contains('game.testMode')));
+      }
       expect(playerSource, contains('game.actionSystem'));
-      expect(bossSource, contains('game.actionSystem'));
+      expect(bossCombined, contains('game.actionSystem'));
     });
   });
 }
