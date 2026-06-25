@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'save_repository.dart';
+import 'save_state.dart';
 import 'scenario_state.dart';
 
 // ============================================================================
@@ -27,25 +29,77 @@ class GameSession extends ChangeNotifier {
   /// flag'leri OKUR (örn. approached_silently), diyalog akışını bilmez (§8.4).
   final ScenarioState scenario = ScenarioState();
 
-  /// Senaryo mutasyonu + dinleyicilere haber (UI/overlay bağlanabilsin).
+  // --- KALICILIK (Faz H) ----------------------------------------------------
+  // GameSession kalıcılığın TEK otoritesidir: tüm kaydetme buradan geçer
+  // (persist). Depolama opsiyonel katmandır; repository yoksa oyun bellekte
+  // çalışmaya devam eder. Input ayarları AYRI (InputSettings) — burada tutulmaz.
+  SaveRepository? _repo;
+
+  // Tüm disk yazımları (save/clear) bu zincire kuyruklanır → SIRALI çalışır.
+  // Böylece hızlı ardışık kayıtlar birbirinin üstüne binmez ve reset'in clear'ı
+  // bekleyen eski bir save tarafından geri getirilmez (Faz H sağlamlık).
+  Future<void> _ioChain = Future<void>.value();
+
+  /// Kalıcılığı bağla ve varsa kaydı yükle (açılışta main'de bir kez çağrılır).
+  Future<void> attachPersistence(SaveRepository repo) async {
+    _repo = repo;
+    final loaded = await repo.load();
+    if (loaded != null) {
+      loaded.applyTo(scenario);
+      notifyListeners();
+    }
+  }
+
+  /// Kaydedilecek anlamlı ilerleme var mı? ("Devam et"/"Yeni oyun" görünürlüğü.)
+  bool get hasProgress =>
+      scenario.flags.isNotEmpty ||
+      scenario.stats.isNotEmpty ||
+      scenario.resources.isNotEmpty ||
+      scenario.completedEncounters.isNotEmpty;
+
+  /// Senaryo durumunu diske yaz. TEK kayıt yolu. Anlık görüntü ŞİMDİ alınır,
+  /// yazım sıralı kuyruğa eklenir (fire-and-forget; akışı bloklamaz).
+  void persist() {
+    final repo = _repo;
+    if (repo == null) return;
+    final snapshot = SaveState.fromScenario(scenario); // çağrı anındaki durum
+    _ioChain = _ioChain.then((_) => repo.save(snapshot)).catchError((_) {});
+  }
+
+  /// Yeni oyun: belleği temizle, ardından (bekleyen save'lerden SONRA) diski sil.
+  Future<void> resetProgress() async {
+    scenario.reset();
+    notifyListeners();
+    final repo = _repo;
+    if (repo == null) return;
+    _ioChain = _ioChain.then((_) => repo.clear()).catchError((_) {});
+    await _ioChain;
+  }
+
+  /// Senaryo değişti → dinleyicilere haber + kalıcı kayıt (merkezi).
+  void _scenarioChanged() {
+    notifyListeners();
+    persist();
+  }
+
   void setFlag(String flag) {
     scenario.setFlag(flag);
-    notifyListeners();
+    _scenarioChanged();
   }
 
   void giveResource(String resource, int amount) {
     scenario.giveResource(resource, amount);
-    notifyListeners();
+    _scenarioChanged();
   }
 
   void setStat(String stat, int value) {
     scenario.setStat(stat, value);
-    notifyListeners();
+    _scenarioChanged();
   }
 
   void markEncounterCompleted(String encounterId) {
     scenario.markCompleted(encounterId);
-    notifyListeners();
+    _scenarioChanged();
   }
 
   /// Normal maç için boss seçildi: id yazılır, önceki sonuç sıfırlanır.

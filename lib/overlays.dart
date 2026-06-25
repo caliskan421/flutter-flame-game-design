@@ -136,14 +136,39 @@ class TestSelectOverlay extends StatelessWidget {
             const SizedBox(height: 22),
             _TestAttackGrid(game: game),
             const SizedBox(height: 16),
+            // Macera + kalıcı ilerleme (Faz G/H). Kayıt varsa "Devam et" +
+            // "Yeni oyun (sıfırla)"; ilerleme satırı kalıcılığı görünür kılar.
+            if (game.session.hasProgress) ...[
+              Text(
+                'İlerleme — Onur: ${game.session.scenario.resource('honor')}'
+                '${game.session.scenario.isCompleted('ash_gate') ? '   ·   Kül Kapısı ✓' : ''}',
+                style: const TextStyle(
+                  color: kUiGreenDark,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             PixelButton(
-              label: 'MACERA: KÜL KAPISI',
+              label: game.session.hasProgress ? 'DEVAM ET' : 'MACERA: KÜL KAPISI',
               primary: true,
               width: double.infinity,
               controllerFocusScope: 'testSelect',
               onTap: () => game.startEncounter(kAshGateEncounter),
             ),
             const SizedBox(height: 12),
+            if (game.session.hasProgress) ...[
+              PixelButton(
+                label: 'YENİ OYUN (SIFIRLA)',
+                primary: false,
+                width: double.infinity,
+                controllerFocusScope: 'testSelect',
+                onTap: game.openResetConfirm,
+              ),
+              const SizedBox(height: 12),
+            ],
             PixelButton(
               label: 'MAÇ (NORMAL)',
               primary: false,
@@ -1231,6 +1256,54 @@ class EncounterDiceOverlay extends StatelessWidget {
                 controllerFocusScope: 'dice',
                 onTap: game.diceAdvance,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Yeni oyun onayı (Faz H): kaydı kalıcı olarak siler. game'e komut yollar.
+class ConfirmResetOverlay extends StatelessWidget {
+  final BossArenaGame game;
+  const ConfirmResetOverlay(this.game, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Scrim(
+      child: PixelFrame(
+        width: 460,
+        padding: const EdgeInsets.fromLTRB(34, 30, 34, 30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _Kicker('YENİ OYUN'),
+            const SizedBox(height: 8),
+            const _Title('EMİN MİSİN?', size: 28),
+            const SizedBox(height: 12),
+            const _Body(
+              'Tüm ilerleme (flag, onur, tamamlanan encounter) kalıcı olarak '
+              'silinecek. Bu işlem geri alınamaz.',
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              children: [
+                PixelButton(
+                  label: 'EVET, SIFIRLA',
+                  controllerFocusScope: 'confirmReset',
+                  onTap: game.confirmNewGame,
+                ),
+                PixelButton(
+                  label: 'İPTAL',
+                  primary: false,
+                  controllerFocusScope: 'confirmReset',
+                  onTap: game.closeResetConfirm,
+                ),
+              ],
             ),
           ],
         ),

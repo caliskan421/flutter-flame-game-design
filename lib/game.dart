@@ -634,6 +634,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents implements EncounterHo
       state: session.scenario,
       rng: scenarioRng,
       host: this,
+      // Kalıcılık (Faz H): runner her state değişiminde merkezi persist'i tetikler.
+      onStateChanged: session.persist,
     );
     activeEncounter!.start();
   }
@@ -692,8 +694,8 @@ class BossArenaGame extends FlameGame with KeyboardEvents implements EncounterHo
 
   @override
   void onEncounterComplete(EncounterDef encounter) {
-    session.markEncounterCompleted(encounter.id);
-    // İlk slice: sonraki encounter placeholder → menüye dön.
+    // State mutasyonu (markCompleted) + kalıcılık runner'da yapıldı (tek otorite);
+    // host yalnız akış/UI ile ilgilenir. İlk slice: placeholder → menüye dön.
     backToModeSelect();
   }
 
@@ -754,6 +756,14 @@ class BossArenaGame extends FlameGame with KeyboardEvents implements EncounterHo
     overlays.remove('won');
     overlays.remove('lost');
     beginMatch();
+  }
+
+  // --- KALICILIK (Faz H): yeni oyun / sıfırla (onaylı) ---
+  void openResetConfirm() => overlays.add('confirmReset');
+  void closeResetConfirm() => overlays.remove('confirmReset');
+  void confirmNewGame() {
+    overlays.remove('confirmReset');
+    session.resetProgress(); // disk temizliği async; menü anında güncellenir
   }
 
   void openControlsOverlay() {

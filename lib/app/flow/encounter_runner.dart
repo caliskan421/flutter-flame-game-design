@@ -35,12 +35,18 @@ class EncounterRunner {
     required this.state,
     required this.rng,
     required this.host,
+    this.onStateChanged,
   });
 
   final EncounterDef def;
   final ScenarioState state;
   final Rng rng;
   final EncounterHost host;
+
+  /// ScenarioState her değiştiğinde (efekt/tamamlama) tetiklenir. Kalıcılık (Faz H)
+  /// burada GameSession.persist'e bağlanır → runner GameSession'a bağımlı kalmaz
+  /// (tek-yön bağımlılık korunur).
+  final void Function()? onStateChanged;
 
   int _index = -1;
   int get stepIndex => _index;
@@ -50,9 +56,14 @@ class EncounterRunner {
   /// Encounter'ı başlat (ilk adıma geç). Geçici flag'leri (zar sonucu vb.)
   /// temizler → tekrar oynatma temiz başlar (kalıcı ilerleme flag'leri kalır).
   void start() {
+    var cleared = false;
     for (final f in def.clearFlagsOnStart) {
-      state.clearFlag(f);
+      if (state.hasFlag(f)) {
+        state.clearFlag(f);
+        cleared = true;
+      }
     }
+    if (cleared) onStateChanged?.call(); // temizlik de kalıcı olsun (diskten sil)
     _index = -1;
     _advance();
   }
@@ -69,6 +80,7 @@ class EncounterRunner {
     for (final e in opts[optionIndex].effects) {
       _applyEffect(e);
     }
+    onStateChanged?.call();
     _advance();
   }
 
@@ -95,7 +107,9 @@ class EncounterRunner {
     _index++;
     final step = current;
     if (step == null) {
+      final firstTime = !state.isCompleted(def.id);
       state.markCompleted(def.id);
+      if (firstTime) onStateChanged?.call();
       host.onEncounterComplete(def);
       return;
     }
@@ -110,12 +124,20 @@ class EncounterRunner {
         for (final e in effects) {
           _applyEffect(e);
         }
+        onStateChanged?.call();
         host.showDiceCheck(check, result);
       case CombatStep():
         host.startCombat(step);
       case RewardStep(:final effects):
-        for (final e in effects) {
-          _applyEffect(e);
+        // Ödül YALNIZ ilk tamamlamada verilir (completedEncounters kalıcı → çift
+        // ödül yok). KRİTİK: ödül + tamamlandı işareti ATOMİK yazılır; reward
+        // ekranındayken çökme olsa bile tekrar açılışta ödül yeniden verilmez.
+        if (!state.isCompleted(def.id)) {
+          for (final e in effects) {
+            _applyEffect(e);
+          }
+          state.markCompleted(def.id);
+          onStateChanged?.call();
         }
         host.showReward(step);
     }

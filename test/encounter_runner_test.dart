@@ -170,6 +170,68 @@ void main() {
       expect(state.hasFlag('boss_knight_1_defeated'), isTrue);
     });
 
+    test('ödül yalnız İLK tamamlamada verilir (tekrar oynamada çift ödül yok)', () {
+      final state = ScenarioState();
+      void playToWin() {
+        final runner = EncounterRunner(
+          def: _encounter(),
+          state: state,
+          rng: Rng.seeded(1),
+          host: FakeHost(),
+        );
+        runner.start();
+        runner.next(); // choice
+        runner.choose(0); // dice
+        runner.next(); // combat
+        runner.onCombatResult(true); // reward
+        runner.next(); // complete
+      }
+
+      playToWin();
+      expect(state.resource('honor'), 1);
+      expect(state.isCompleted('ash_gate'), isTrue);
+
+      playToWin(); // tekrar oyna — completedEncounters kalıcı → ödül tekrar verilmez
+      expect(state.resource('honor'), 1);
+    });
+
+    test('ödül + tamamlandı ATOMİK: reward gösterilince (kapanmadan) completed', () {
+      final state = ScenarioState();
+      final runner = EncounterRunner(
+        def: _encounter(),
+        state: state,
+        rng: Rng.seeded(1),
+        host: FakeHost(),
+      );
+      runner.start();
+      runner.next(); // choice
+      runner.choose(0); // dice
+      runner.next(); // combat
+      runner.onCombatResult(true); // reward gösterildi — ama next() ÇAĞRILMADI
+      // Reward ekranındayken "çökme" simülasyonu: completed + honor zaten kalıcı.
+      expect(state.isCompleted('ash_gate'), isTrue);
+      expect(state.resource('honor'), 1);
+    });
+
+    test('onStateChanged efekt/tamamlamada tetiklenir (kalıcılık kancası)', () {
+      var changes = 0;
+      final state = ScenarioState();
+      final runner = EncounterRunner(
+        def: _encounter(),
+        state: state,
+        rng: Rng.seeded(1),
+        host: FakeHost(),
+        onStateChanged: () => changes++,
+      );
+      runner.start();
+      runner.next();
+      runner.choose(0); // choice efektleri → +1
+      runner.next();
+      runner.onCombatResult(true); // reward efektleri → +1
+      runner.next(); // complete → +1
+      expect(changes, greaterThanOrEqualTo(3));
+    });
+
     test('seedli zar deterministik (aynı seed → aynı sonuç)', () {
       DiceResult run(int seed) {
         final state = ScenarioState();

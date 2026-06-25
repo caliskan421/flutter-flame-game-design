@@ -9,6 +9,8 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import 'audio.dart';
+import 'core/shared_prefs_save_store.dart';
+import 'domain/save_repository.dart';
 import 'game.dart';
 import 'overlays.dart';
 
@@ -18,6 +20,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Ses havuzlarını önceden hazırla → tuşa basıldığında anlık çalsın.
   await Sfx.init();
+  // Kalıcılık (Faz H): kayıtlı ilerlemeyi yükle (varsa) — combat/input'tan ayrı.
+  await game.session.attachPersistence(SaveRepository(SharedPrefsSaveStore()));
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -36,6 +40,8 @@ Future<void> main() async {
           'choice': (ctx, g) => EncounterChoiceOverlay(g),
           'dice': (ctx, g) => EncounterDiceOverlay(g),
           'reward': (ctx, g) => EncounterRewardOverlay(g),
+          // Faz H — yeni oyun onayı.
+          'confirmReset': (ctx, g) => ConfirmResetOverlay(g),
         },
         // Açılış: doğrudan combat/test arenası.
         initialActiveOverlays: const ['testSelect'],
